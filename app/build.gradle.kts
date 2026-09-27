@@ -12,8 +12,11 @@ android {
         applicationId = "com.zenfold.launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // CI builds are numbered by their GitHub Actions run, so App info → Version on the
+        // phone shows which build is installed (and each one counts as a newer update).
+        val ciRun = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = ciRun ?: 1
+        versionName = if (ciRun != null) "1.0.$ciRun" else "1.0.0-local"
     }
 
     buildFeatures {
@@ -32,7 +35,24 @@ android {
         freeCompilerArgs += listOf("-opt-in=androidx.compose.foundation.ExperimentalFoundationApi")
     }
 
+    // One fixed debug key, committed on purpose: without it every CI runner signs with a
+    // fresh random key, and Android refuses to install a build over one signed with a
+    // different key ("App not installed") — so the phone silently keeps the old version.
+    // It's the standard public debug-key setup (password "android"), for sideloaded test
+    // builds only; a Play release must use its own private key, never this one.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(
