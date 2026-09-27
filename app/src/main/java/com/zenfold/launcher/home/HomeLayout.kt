@@ -166,6 +166,22 @@ object HomeLayout {
 
     fun removeAt(items: List<HomeItem>, pos: GridPos): List<HomeItem> = items.filterNot { it.pos == pos }
 
+    fun removeAll(items: List<HomeItem>, positions: Set<GridPos>): List<HomeItem> = items.filterNot { it.pos in positions }
+
+    /**
+     * Merges the selected apps and folders into one folder, in the first selected cell
+     * (reading order). Folders' apps are merged in; fewer than two apps changes nothing.
+     */
+    fun groupIntoFolder(items: List<HomeItem>, positions: Set<GridPos>, folderName: (List<String>) -> String): List<HomeItem> {
+        val chosen = items.filter { it.pos in positions }
+            .sortedWith(compareBy<HomeItem>({ it.pos.page }, { it.pos.row }, { it.pos.col }))
+        val packages = chosen.flatMap { it.packages }.distinct()
+        if (packages.size < 2) return items
+        val existingName = chosen.firstNotNullOfOrNull { (it as? HomeFolder)?.name }
+        return items.filterNot { it.pos in positions } +
+            HomeFolder(chosen.first().pos, existingName ?: folderName(packages), packages)
+    }
+
     fun renameFolder(items: List<HomeItem>, pos: GridPos, name: String): List<HomeItem> = items.map { item ->
         if (item is HomeFolder && item.pos == pos) item.copy(name = cleanName(name)) else item
     }

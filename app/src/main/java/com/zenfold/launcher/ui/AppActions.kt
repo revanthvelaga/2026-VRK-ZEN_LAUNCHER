@@ -1,8 +1,11 @@
 package com.zenfold.launcher.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.net.Uri
 import android.os.Process
@@ -11,17 +14,23 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,7 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** A context-specific entry in an app's long-press menu ("Add to Home", "Remove from folder"...). */
-data class MenuAction(val label: String, val onClick: () -> Unit)
+data class MenuAction(val label: String, val icon: ImageVector? = null, val onClick: () -> Unit)
 
 private const val MAX_SHORTCUTS = 4
 
@@ -63,19 +72,49 @@ fun AppActionsMenu(app: AppEntry, expanded: Boolean, onDismiss: () -> Unit, acti
         }
         if (shortcuts.isNotEmpty()) HorizontalDivider()
         actions.forEach { action ->
-            DropdownMenuItem(text = { Text(action.label) }, onClick = { onDismiss(); action.onClick() })
+            MenuItem(action.label, action.icon) { onDismiss(); action.onClick() }
         }
-        DropdownMenuItem(text = { Text("App info") }, onClick = { onDismiss(); openAppInfo(context, app.packageName) })
-        DropdownMenuItem(text = { Text("Uninstall") }, onClick = { onDismiss(); uninstallApp(context, app.packageName) })
+        MenuItem("App info", Icons.Outlined.Info) { onDismiss(); openAppInfo(context, app.packageName) }
+        // Built-in system apps can't be uninstalled, only disabled from App info.
+        if (remember(app.packageName) { isUninstallable(context, app.packageName) }) {
+            MenuItem("Uninstall", Icons.Outlined.Delete) { onDismiss(); uninstallApp(context, app.packageName) }
+        }
     }
+}
+
+@Composable
+private fun MenuItem(label: String, icon: ImageVector?, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label) },
+        leadingIcon = icon?.let { { Icon(it, contentDescription = null, modifier = Modifier.size(20.dp)) } },
+        onClick = onClick
+    )
 }
 
 fun openAppInfo(context: Context, packageName: String) {
     context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
 }
 
+/** Anything the user installed, or an update to a built-in app (which rolls back to the factory version). */
+fun isUninstallable(context: Context, packageName: String): Boolean = try {
+    val flags = context.packageManager.getApplicationInfo(packageName, 0).flags
+    flags and ApplicationInfo.FLAG_SYSTEM == 0 || flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
+} catch (e: PackageManager.NameNotFoundException) {
+    false
+}
+
+// Android's own "Do you want to uninstall this app?" dialog; the app disappears from Home,
+// the dock and the app pages by itself once it's gone (see InstalledApps.kt).
 fun uninstallApp(context: Context, packageName: String) {
-    context.startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", packageName, null)))
+    if (!isUninstallable(context, packageName)) {
+        Toast.makeText(context, "Built-in apps can't be uninstalled — you can disable it in App info", Toast.LENGTH_LONG).show()
+        return openAppInfo(context, packageName)
+    }
+    try {
+        context.startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", packageName, null)))
+    } catch (e: ActivityNotFoundException) {
+        openAppInfo(context, packageName)
+    }
 }
 
 // Only the default Home app may read other apps' shortcuts, so this is empty until

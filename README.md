@@ -35,12 +35,18 @@ hand-drawn zen circle, as its visual motif.
   to Remove or Uninstall** it, or **to the screen's edge** to send it to the
   previous/next page (a new one if needed). Folders (`ui/Folders.kt`) show a
   2×2 preview of their first four apps; tap to open (they zoom open), tap
-  the title to rename. Long-press without moving for a menu: the app's own
-  **shortcuts** ("New message", "Compose"...), Remove from Home, Add to
-  dock, App info, Uninstall. **Long-press empty space** for the home menu
+  the title to rename. Long-press opens the menu straight away (it closes
+  if you start dragging): the app's own **shortcuts** ("New message",
+  "Compose"...), **Remove**, **Select**, Add to dock, **App info** and
+  **Uninstall** (hidden for built-in apps, which can only be disabled).
+  **Select** ticks icons: tap more, then **Remove** them all or group them
+  into a **Folder**. Uninstall needs `REQUEST_DELETE_PACKAGES` — without it
+  Android 9+ silently refuses to show the uninstall dialog. **Long-press empty space** for the home menu
   (`ui/HomeEditing.kt`): **Add apps** (every app with a checkbox — ticked =
   on Home), **Widgets**, **Settings**. Swipe **down** for the notification
-  shade, **up** for the all-apps drawer.
+  shade, **up** for the all-apps drawer — or tap the **^** above the dock,
+  or swipe up from the dock (which works even on a page whose own content
+  scrolls).
 - **App pages (MIUI-style)** — keep swiping right past your home pages and
   every app that isn't on Home or in the dock is laid out A–Z, a full grid
   per page (as many rows as fit the screen). So each app lives in exactly

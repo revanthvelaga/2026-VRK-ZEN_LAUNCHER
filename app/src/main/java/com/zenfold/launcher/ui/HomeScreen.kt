@@ -46,6 +46,22 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -164,6 +180,8 @@ fun HomeScreen(
     var widgetPickerOpen by remember { mutableStateOf(false) }
     var appPickerOpen by remember { mutableStateOf(false) }
     var openFolderAt by remember { mutableStateOf<GridPos?>(null) }
+    // MIUI's "Select": long-press → Select, then tap more icons to act on them together.
+    var selection by remember { mutableStateOf<Set<GridPos>?>(null) }
     val dragState = remember { mutableStateOf<HomeDrag?>(null) }
     val dragging by remember { derivedStateOf { dragState.value != null } }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
@@ -335,6 +353,7 @@ fun HomeScreen(
     // Pressing Home while ZenFold is already showing should drop back to the first home page.
     LaunchedEffect(homeSignal) {
         closeDrawer()
+        selection = null
         homeMenuOpen = false
         widgetPickerOpen = false
         appPickerOpen = false
@@ -354,6 +373,7 @@ fun HomeScreen(
     BackHandler(enabled = widgetPickerOpen) { widgetPickerOpen = false }
     BackHandler(enabled = appPickerOpen) { appPickerOpen = false }
     BackHandler(enabled = openFolderAt != null) { openFolderAt = null }
+    BackHandler(enabled = selection != null) { selection = null }
 
     val swipeThreshold = with(density) { 72.dp.toPx() }
     // Swipe up anywhere on Home opens all apps; swipe down pulls the notification shade.
@@ -387,19 +407,25 @@ fun HomeScreen(
         }
     }
 
-    val homeAppActions: (AppEntry) -> List<MenuAction> = { app ->
+    val homeAppActions: (GridPos, AppEntry) -> List<MenuAction> = { pos, app ->
         listOfNotNull(
-            MenuAction("Remove from Home") { edit { HomeLayout.removeApp(it, app.packageName) } },
-            MenuAction("Add to dock") { addToDock(app) }.takeIf { app !in dock }
+            MenuAction("Remove", Icons.Outlined.RemoveCircleOutline) { edit { HomeLayout.removeApp(it, app.packageName) } },
+            MenuAction("Select", Icons.Outlined.CheckCircle) { selection = setOf(pos) },
+            MenuAction("Add to dock", Icons.Outlined.AddCircleOutline) { addToDock(app) }.takeIf { app !in dock }
         )
+    }
+
+    fun toggleSelected(pos: GridPos) {
+        val next = (selection ?: emptySet()).let { if (pos in it) it - pos else it + pos }
+        selection = next.ifEmpty { null }
     }
 
     // For apps outside Home: the swipe-up drawer and the app pages.
     val drawerAppActions: (AppEntry) -> List<MenuAction> = { app ->
         listOfNotNull(
-            MenuAction("Add to Home") { addToHome(app) },
-            MenuAction("Add to dock") { addToDock(app) }.takeIf { app !in dock },
-            MenuAction("Hide app") {
+            MenuAction("Add to Home", Icons.Outlined.Home) { addToHome(app) },
+            MenuAction("Add to dock", Icons.Outlined.AddCircleOutline) { addToDock(app) }.takeIf { app !in dock },
+            MenuAction("Hide app", Icons.Outlined.VisibilityOff) {
                 onHideApp(app.packageName)
                 toast("${app.label} hidden — unhide it in ZenFold Settings")
             }
@@ -520,7 +546,9 @@ fun HomeScreen(
                                     onRemoveFolder = { pos ->
                                         edit { HomeLayout.removeAt(it, pos) }
                                         toast("Folder removed — its apps are back on the app pages")
-                                    }
+                                    },
+                                    selection = selection,
+                                    onSelect = ::toggleSelected
                                 )
                                 Spacer(Modifier.height(8.dp))
                             }
@@ -543,22 +571,67 @@ fun HomeScreen(
                         scaleY = enter
                         alpha = dockAlpha.value * homeContentAlpha
                     }
+                    // Swiping up from the dock always opens all apps, even on a home page
+                    // whose own content scrolls (where a swipe up scrolls it first).
+                    .pointerInput(swipeThreshold) {
+                        var dragged = 0f
+                        detectVerticalDragGestures(onDragStart = { dragged = 0f }) { _, amount ->
+                            dragged += amount
+                            if (dragged < -swipeThreshold) {
+                                dragged = 0f
+                                openDrawer(withKeyboard = false)
+                            }
+                        }
+                    }
                     .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                val pageDots = homePages + appPages.size
-                PageIndicator(pageDots, (pagerState.currentPage - 1).coerceIn(0, pageDots - 1), style)
-                Spacer(Modifier.height(10.dp))
-                Dock(
-                    apps = dock,
-                    style = style,
-                    badged = badged,
-                    onLaunch = onLaunch,
-                    appActions = { app ->
-                        listOf(MenuAction("Remove from dock") { onDockEdit { current -> current - app.packageName } })
-                    }
-                )
+                val selected = selection?.filter { it in cells }?.toSet()
+                if (selected != null) {
+                    SelectionBar(
+                        count = selected.size,
+                        canGroup = selected.sumOf { cells[it]?.let { cell -> if (cell is HomeCell.Folder) cell.apps.size else 1 } ?: 0 } >= 2,
+                        style = style,
+                        onRemove = {
+                            edit { HomeLayout.removeAll(it, selected) }
+                            toast("Removed from Home — the apps are still on the app pages")
+                            selection = null
+                        },
+                        onGroup = {
+                            edit { current -> HomeLayout.groupIntoFolder(current, selected) { folderNameFor(context, it) } }
+                            selection = null
+                        },
+                        onDone = { selection = null }
+                    )
+                } else {
+                    // Tap (or swipe up) for the A–Z drawer with search.
+                    Icon(
+                        Icons.Filled.KeyboardArrowUp,
+                        contentDescription = "All apps",
+                        tint = style.onBackground.copy(alpha = 0.75f),
+                        modifier = Modifier
+                            .size(width = 48.dp, height = 22.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .clickable { openDrawer(withKeyboard = false) }
+                    )
+                    val pageDots = homePages + appPages.size
+                    PageIndicator(pageDots, (pagerState.currentPage - 1).coerceIn(0, pageDots - 1), style)
+                    Spacer(Modifier.height(10.dp))
+                    Dock(
+                        apps = dock,
+                        style = style,
+                        badged = badged,
+                        onLaunch = onLaunch,
+                        appActions = { app ->
+                            listOf(
+                                MenuAction("Remove from dock", Icons.Outlined.RemoveCircleOutline) {
+                                    onDockEdit { current -> current - app.packageName }
+                                }
+                            )
+                        }
+                    )
+                }
             }
         }
 
@@ -721,8 +794,9 @@ private fun ClockBlock(style: CustomStyle, now: Long) {
 
 // Long-press and drag any icon or folder: onto an empty cell to move it, an app onto
 // another app to make a folder, an app onto a folder to add it, to the top to remove or
-// uninstall it, or to the screen's edge to send it to another page. Long-press WITHOUT
-// moving (release near where you picked it up) opens its menu instead.
+// uninstall it, or to the screen's edge to send it to another page. The long-press menu
+// opens straight away (MIUI/Pixel-style) and closes as soon as the icon starts moving.
+// In select mode ([selection] non-null) taps tick icons instead, and dragging is off.
 @Composable
 private fun HomeGrid(
     page: Int,
@@ -735,8 +809,10 @@ private fun HomeGrid(
     onDrop: (from: GridPos, pointer: Offset, target: GridPos?) -> Unit,
     onLaunch: (AppEntry) -> Unit,
     onOpenFolder: (GridPos) -> Unit,
-    appActions: (AppEntry) -> List<MenuAction>,
-    onRemoveFolder: (GridPos) -> Unit
+    appActions: (GridPos, AppEntry) -> List<MenuAction>,
+    onRemoveFolder: (GridPos) -> Unit,
+    selection: Set<GridPos>?,
+    onSelect: (GridPos) -> Unit
 ) {
     val density = LocalDensity.current
     val pageCells = remember(cells, page) { cells.filterKeys { it.page == page } }
@@ -814,7 +890,8 @@ private fun HomeGrid(
                                 scaleX = lift
                                 scaleY = lift
                             }
-                            .pointerInput(pos, cell) {
+                            .pointerInput(pos, cell, selection != null) {
+                                if (selection != null) return@pointerInput
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { start ->
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -822,11 +899,14 @@ private fun HomeGrid(
                                         dragStart = start
                                         dragOffset = Offset.Zero
                                         hoverTarget = pos
+                                        menuAt = pos
                                         onDragChange(currentDrag())
                                     },
                                     onDrag = { change, amount ->
                                         change.consume()
                                         dragOffset += amount
+                                        // Picked up and moving: it's a drag, not a menu.
+                                        if (menuAt == pos && hypot(dragOffset.x, dragOffset.y) > tapSlopPx) menuAt = null
                                         val drag = currentDrag()
                                         onDragChange(drag)
                                         val col = ((baseX + dragOffset.x + cellPx / 2) / cellPx).toInt().coerceIn(0, spec.columns - 1)
@@ -835,7 +915,7 @@ private fun HomeGrid(
                                     },
                                     onDragEnd = {
                                         val moved = hypot(dragOffset.x, dragOffset.y) > tapSlopPx
-                                        if (moved) onDrop(pos, currentDrag().pointer, hoverTarget) else menuAt = pos
+                                        if (moved) onDrop(pos, currentDrag().pointer, hoverTarget)
                                         resetDrag()
                                     },
                                     onDragCancel = { resetDrag() }
@@ -855,13 +935,13 @@ private fun HomeGrid(
                                     style = style,
                                     showLabel = style.showHomeLabels,
                                     badged = cell.app.packageName in badged,
-                                    onClick = { onLaunch(cell.app) }
+                                    onClick = { if (selection != null) onSelect(pos) else onLaunch(cell.app) }
                                 )
                                 AppActionsMenu(
                                     cell.app,
                                     expanded = menuAt == pos,
                                     onDismiss = { menuAt = null },
-                                    actions = if (menuAt == pos) appActions(cell.app) else emptyList()
+                                    actions = if (menuAt == pos) appActions(pos, cell.app) else emptyList()
                                 )
                             }
                             is HomeCell.Folder -> {
@@ -871,15 +951,30 @@ private fun HomeGrid(
                                     style = style,
                                     showLabel = style.showHomeLabels,
                                     badged = cell.apps.any { it.packageName in badged },
-                                    onClick = { onOpenFolder(pos) }
+                                    onClick = { if (selection != null) onSelect(pos) else onOpenFolder(pos) }
                                 )
                                 DropdownMenu(expanded = menuAt == pos, onDismissRequest = { menuAt = null }) {
                                     DropdownMenuItem(text = { Text("Open") }, onClick = { menuAt = null; onOpenFolder(pos) })
+                                    DropdownMenuItem(text = { Text("Select") }, onClick = { menuAt = null; onSelect(pos) })
                                     DropdownMenuItem(
                                         text = { Text("Remove folder from Home") },
                                         onClick = { menuAt = null; onRemoveFolder(pos) }
                                     )
                                 }
+                            }
+                        }
+                        if (selection != null) {
+                            val ticked = pos in selection
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp, end = 10.dp)
+                                    .size(20.dp)
+                                    .background(if (ticked) style.accent else Color.Black.copy(alpha = 0.35f), CircleShape)
+                                    .border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (ticked) Icon(Icons.Outlined.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -938,6 +1033,51 @@ private fun AppsPage(
                 }
             }
         }
+    }
+}
+
+// Replaces the dock while selecting: what to do with the ticked icons.
+@Composable
+private fun SelectionBar(
+    count: Int,
+    canGroup: Boolean,
+    style: CustomStyle,
+    onRemove: () -> Unit,
+    onGroup: () -> Unit,
+    onDone: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            if (count == 1) "1 selected — tap more icons to add them" else "$count selected",
+            fontSize = 13.sp,
+            color = style.onBackground,
+            modifier = Modifier.padding(bottom = 10.dp)
+        )
+        Row(
+            Modifier.fillMaxWidth().height(76.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SelectionButton("Remove", Icons.Outlined.RemoveCircleOutline, enabled = count > 0, style, onRemove)
+            SelectionButton("Folder", Icons.Outlined.CreateNewFolder, enabled = canGroup, style, onGroup)
+            SelectionButton("Done", Icons.Outlined.Check, enabled = true, style, onDone)
+        }
+    }
+}
+
+@Composable
+private fun SelectionButton(label: String, icon: ImageVector, enabled: Boolean, style: CustomStyle, onClick: () -> Unit) {
+    val alpha = if (enabled) 1f else 0.35f
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = null, tint = style.onBackground.copy(alpha = alpha), modifier = Modifier.size(26.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 12.sp, color = style.onBackground.copy(alpha = alpha))
     }
 }
 

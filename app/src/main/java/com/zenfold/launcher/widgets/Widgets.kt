@@ -73,8 +73,8 @@ enum class WidgetType(val id: String, val title: String) {
     NOTIFICATIONS("notifications", "Notifications")
 }
 
-// Home menu → Widgets: ZenFold's own widgets as on/off switches, then other apps' widgets
-// (see HostedWidgets.kt) to add or remove.
+// Home menu → Widgets: other apps' widgets (see HostedWidgets.kt) to add or remove, then
+// ZenFold's own widgets as on/off switches.
 @Composable
 fun WidgetPickerOverlay(
     style: CustomStyle,
@@ -107,10 +107,21 @@ fun WidgetPickerOverlay(
         ) {
             Text("Widgets", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = style.onBackground)
             Text(
-                "Choose what shows on your home screen",
+                "Tap an app to see its widgets, then tap one to put it on Home",
                 fontSize = 12.sp,
                 color = style.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            // Other apps' widgets first — the clock, Google search, weather... — like
+            // Android's own picker; ZenFold's built-in cards follow as switches.
+            AndroidWidgetsSection(style, hostedWidgetIds, onAddAndroidWidget, onRemoveAndroidWidget)
+            Text(
+                "ZENFOLD WIDGETS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp,
+                color = style.onSurfaceVariant,
+                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
             )
             WidgetType.entries.forEach { widget ->
                 Row(
@@ -122,7 +133,6 @@ fun WidgetPickerOverlay(
                     Switch(checked = widget in enabled, onCheckedChange = { onToggle(widget, it) })
                 }
             }
-            AndroidWidgetsSection(style, hostedWidgetIds, onAddAndroidWidget, onRemoveAndroidWidget)
         }
     }
 }

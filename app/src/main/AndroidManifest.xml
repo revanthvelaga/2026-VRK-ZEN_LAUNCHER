@@ -4,13 +4,16 @@
     <!-- Lets the launcher pull down the notification shade. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
+    <!-- Long-press → Uninstall: since Android 9 the system's uninstall dialog silently
+         refuses to open for apps without this (normal, install-time) permission. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <!-- Runtime-requested from the Today panel's Calendar card; the panel works fine
          (shows a "tap to allow" prompt) if the user never grants it. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
 
-    <!-- Today panel's Feeds card: gold/Sensex/cricket calls go straight from the device
-         to the user's own configured provider (goldapi.io / twelvedata.com / cricapi.com),
-         using the API key they entered in Settings — see feeds/FeedApi.kt. -->
+    <!-- Today panel's live cards: gold/Sensex/cricket/trending from public keyless
+         feeds, straight from the device — see feeds/FeedApi.kt. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
