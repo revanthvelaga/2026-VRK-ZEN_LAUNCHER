@@ -26,12 +26,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      # compileSdk in app/build.gradle.kts — bump this alongside it if that ever changes.
-      - name: Install required SDK packages
-        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
+      # GitHub's ubuntu-latest runner already ships an Android SDK at $ANDROID_HOME —
+      # android-actions/setup-android tries to install the long-removed legacy "tools"
+      # package and fails outright, so we drive sdkmanager from that SDK directly instead.
+      # compileSdk in app/build.gradle.kts — bump the platform/build-tools below alongside it.
+      - name: Accept SDK licenses and install required packages
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -name sdkmanager -type f | sort -V | tail -n1)"
+          echo "Using sdkmanager at $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0"
 
       - name: Cache Gradle dependencies
         uses: gradle/actions/setup-gradle@v4
