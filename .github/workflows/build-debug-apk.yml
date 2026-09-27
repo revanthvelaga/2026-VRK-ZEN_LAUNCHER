@@ -1,0 +1,50 @@
+name: Build debug APK
+
+# Skips Android Studio entirely: push code, GitHub Actions builds the debug
+# APK, download it from the finished run's "Artifacts" section and install
+# it on your phone (Settings will warn about "unknown sources" the first
+# time — that's expected for a sideloaded debug build).
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # compileSdk in app/build.gradle.kts — bump this alongside it if that ever changes.
+      - name: Install required SDK packages
+        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Cache Gradle dependencies
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenfold-launcher-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
