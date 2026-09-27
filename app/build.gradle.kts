@@ -27,6 +27,9 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // HorizontalPager/rememberPagerState (ui/HomeScreen.kt) are still
+        // @ExperimentalFoundationApi in this Compose Foundation version.
+        freeCompilerArgs += listOf("-opt-in=androidx.compose.foundation.ExperimentalFoundationApi")
     }
 
     buildTypes {

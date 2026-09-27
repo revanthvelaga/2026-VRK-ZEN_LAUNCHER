@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.feeds.FeedPreferences
