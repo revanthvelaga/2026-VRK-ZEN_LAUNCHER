@@ -52,6 +52,7 @@ private object Keys {
     val DOCK = stringPreferencesKey("dock")
     val ICON_PACK = stringPreferencesKey("icon_pack")
     val HOSTED_WIDGETS = stringPreferencesKey("hosted_widgets")
+    val PHONE_WALLPAPER = booleanPreferencesKey("phone_wallpaper")
 }
 
 const val MAX_DOCK_APPS = 5
@@ -129,6 +130,13 @@ class StylePreferences(private val context: Context) {
     val iconPack = context.launcherPrefs.data.map { prefs -> prefs[Keys.ICON_PACK]?.takeIf { it.isNotBlank() } }
     /** Other apps' widgets placed on Home, as AppWidgetHost ids, top to bottom. */
     val hostedWidgets = context.launcherPrefs.data.map { prefs -> prefs.toWidgetIds() }
+
+    /** True (the default): Home shows the phone's own wallpaper. False: ZenFold's gradient. */
+    val phoneWallpaper = context.launcherPrefs.data.map { prefs -> prefs[Keys.PHONE_WALLPAPER] ?: true }
+
+    suspend fun setPhoneWallpaper(enabled: Boolean) {
+        context.launcherPrefs.edit { prefs -> prefs[Keys.PHONE_WALLPAPER] = enabled }
+    }
 
     suspend fun setIconPack(packageName: String?) {
         context.launcherPrefs.edit { prefs -> prefs[Keys.ICON_PACK] = packageName.orEmpty() }

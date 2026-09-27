@@ -1,6 +1,7 @@
 package com.zenfold.launcher.ui
 
 import android.annotation.SuppressLint
+import android.app.WallpaperManager
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
@@ -96,6 +97,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -160,6 +162,8 @@ fun HomeScreen(
     noteText: String,
     tasks: List<TaskItem>,
     homeSignal: Int,
+    phoneWallpaper: Boolean,
+    onPhoneWallpaperChange: (Boolean) -> Unit,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
     onHomeEdit: ((List<HomeItem>) -> List<HomeItem>) -> Unit,
@@ -269,6 +273,24 @@ fun HomeScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The phone's wallpaper pans a little as you swipe between pages, like on MIUI/Pixel
+    // (only wallpapers wider than the screen actually move).
+    val view = LocalView.current
+    LaunchedEffect(view) {
+        val wallpaperManager = WallpaperManager.getInstance(context)
+        snapshotFlow { (pagerState.currentPage + pagerState.currentPageOffsetFraction) to pagerState.pageCount }
+            .collect { (position, count) ->
+                val token = view.windowToken ?: return@collect
+                val last = (count - 1).coerceAtLeast(1)
+                try {
+                    wallpaperManager.setWallpaperOffsetSteps(1f / last, 1f)
+                    wallpaperManager.setWallpaperOffsets(token, (position / last).coerceIn(0f, 1f), 0.5f)
+                } catch (e: IllegalArgumentException) {
+                    // The window went away mid-swipe.
+                }
+            }
     }
 
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
@@ -462,7 +484,7 @@ fun HomeScreen(
             .fillMaxSize()
             .onSizeChanged { rootSize = it }
     ) {
-        Wallpaper(style, hazeState, Modifier.fillMaxSize())
+        Wallpaper(style, hazeState, phoneWallpaper, Modifier.fillMaxSize())
 
         HorizontalPager(
             state = pagerState,
@@ -572,7 +594,8 @@ fun HomeScreen(
                         alpha = dockAlpha.value * homeContentAlpha
                     }
                     // Swiping up from the dock always opens all apps, even on a home page
-                    // whose own content scrolls (where a swipe up scrolls it first).
+                    // whose own content scrolls (where a swipe up scrolls it first); down
+                    // pulls the notification shade, like anywhere else on Home.
                     .pointerInput(swipeThreshold) {
                         var dragged = 0f
                         detectVerticalDragGestures(onDragStart = { dragged = 0f }) { _, amount ->
@@ -580,6 +603,9 @@ fun HomeScreen(
                             if (dragged < -swipeThreshold) {
                                 dragged = 0f
                                 openDrawer(withKeyboard = false)
+                            } else if (dragged > swipeThreshold) {
+                                dragged = 0f
+                                expandNotificationShade(context)
                             }
                         }
                     }
@@ -699,6 +725,11 @@ fun HomeScreen(
                     homeMenuOpen = false
                     widgetPickerOpen = true
                 },
+                onWallpapers = {
+                    homeMenuOpen = false
+                    onPhoneWallpaperChange(true)
+                    openWallpaperPicker(context)
+                },
                 onSettings = {
                     homeMenuOpen = false
                     context.startActivity(Intent(context, SettingsActivity::class.java))
@@ -746,15 +777,22 @@ private fun DropTargetsHost(dragState: MutableState<HomeDrag?>, zoneAt: (HomeDra
     DropTargets(drag, drag?.let(zoneAt), style)
 }
 
-// EXPAND_STATUS_BAR is an auto-granted permission, but there's no public API for this —
-// it's the same hidden StatusBarManager call every third-party launcher relies on.
+// The official way first: ZenFold's accessibility service (if it's on) can open the
+// shade with a public API that works on every ROM. Otherwise the hidden StatusBarManager
+// call every third-party launcher relies on (EXPAND_STATUS_BAR is auto-granted) — some
+// ROMs block or ignore it, so if it fails we say how to make the gesture work.
 @SuppressLint("WrongConstant")
 private fun expandNotificationShade(context: Context) {
+    if (LockScreenService.openNotifications()) return
     try {
-        val statusBar = context.getSystemService("statusbar") ?: return
+        val statusBar = context.getSystemService("statusbar") ?: throw NoSuchMethodException("statusbar")
         statusBar.javaClass.getMethod("expandNotificationsPanel").invoke(statusBar)
     } catch (e: ReflectiveOperationException) {
-        // A ROM that removed or renamed it: the gesture just does nothing there.
+        Toast.makeText(
+            context,
+            "This phone blocks that — turn on ZenFold in Settings → Accessibility to use swipe down",
+            Toast.LENGTH_LONG
+        ).show()
     }
 }
 

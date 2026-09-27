@@ -67,6 +67,8 @@ fun SettingsScreen(
     onGridSpecChange: (GridSpec) -> Unit,
     iconPack: String?,
     onIconPackChange: (String?) -> Unit,
+    phoneWallpaper: Boolean,
+    onPhoneWallpaperChange: (Boolean) -> Unit,
     onApplyPreset: (CustomStyle) -> Unit,
     onChange: (CustomStyle) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
@@ -75,7 +77,8 @@ fun SettingsScreen(
     val hazeState = remember { HazeState() }
 
     Box(Modifier.fillMaxSize()) {
-        Wallpaper(style, hazeState, Modifier.fillMaxSize())
+        // Settings is an ordinary window (no windowShowWallpaper), so it keeps the gradient.
+        Wallpaper(style, hazeState, phoneWallpaper = false, modifier = Modifier.fillMaxSize())
         LazyColumn(
             Modifier
                 .fillMaxSize()
@@ -206,6 +209,18 @@ fun SettingsScreen(
                         fontSize = 12.sp,
                         color = style.onSurfaceVariant
                     )
+                }
+            }
+
+            item {
+                SettingsSection(style, "Wallpaper") {
+                    val context = LocalContext.current
+                    ChoiceRow(style, "Phone wallpaper", selected = phoneWallpaper) { onPhoneWallpaperChange(true) }
+                    ChoiceRow(style, "ZenFold gradient (this style's colors)", selected = !phoneWallpaper) { onPhoneWallpaperChange(false) }
+                    TextButton(onClick = {
+                        onPhoneWallpaperChange(true)
+                        openWallpaperPicker(context)
+                    }) { Text("Change wallpaper") }
                 }
             }
 

@@ -4,9 +4,11 @@ import android.app.ActivityOptions
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -75,6 +77,7 @@ class MainActivity : ComponentActivity() {
             val dockPackages by stylePreferences.dockPackages.collectAsState(initial = emptyList())
             val hiddenApps by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val hostedWidgets by stylePreferences.hostedWidgets.collectAsState(initial = emptyList())
+            val phoneWallpaper by stylePreferences.phoneWallpaper.collectAsState(initial = true)
             val tasks by taskPreferences.tasks.collectAsState(initial = emptyList())
             val scope = rememberCoroutineScope()
 
@@ -114,6 +117,8 @@ class MainActivity : ComponentActivity() {
                     noteText = noteText,
                     tasks = tasks,
                     homeSignal = homeSignal,
+                    phoneWallpaper = phoneWallpaper,
+                    onPhoneWallpaperChange = { on -> scope.launch { stylePreferences.setPhoneWallpaper(on) } },
                     onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
                     onHomeEdit = { transform -> scope.launch { stylePreferences.editHomeItems(transform) } },
                     onDockEdit = { transform -> scope.launch { stylePreferences.editDock(transform) } },
@@ -165,11 +170,18 @@ class MainActivity : ComponentActivity() {
         if (appWidgetManager.bindAppWidgetIdIfAllowed(id, provider.provider)) {
             configureOrSaveWidget(id)
         } else {
-            bindWidget.launch(
-                Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
-                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
-            )
+            try {
+                bindWidget.launch(
+                    Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
+                )
+            } catch (e: ActivityNotFoundException) {
+                // A ROM without Android's "Allow ZenFold to add widgets?" screen.
+                appWidgetHost.deleteAppWidgetId(id)
+                pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+                toast("This phone doesn't let other launchers add that widget")
+            }
         }
     }
 
@@ -195,12 +207,19 @@ class MainActivity : ComponentActivity() {
     private fun saveWidget(id: Int) {
         pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
         lifecycleScope.launch { stylePreferences.addHostedWidget(id) }
+        // Back to the first home page, where added widgets go, so it's seen landing.
+        homeSignal++
+        toast("Widget added to your first home page")
     }
 
     private fun discardPendingWidget() {
-        if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) appWidgetHost.deleteAppWidgetId(pendingWidgetId)
+        if (pendingWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        appWidgetHost.deleteAppWidgetId(pendingWidgetId)
         pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        toast("Widget not added")
     }
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
     private fun removeAndroidWidget(id: Int) {
         appWidgetHost.deleteAppWidgetId(id)

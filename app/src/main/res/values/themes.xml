@@ -2,7 +2,9 @@
     <style name="Theme.ZenFold" parent="android:Theme.Material.Light.NoActionBar" />
 
     <style name="Theme.ZenFold.Home" parent="Theme.ZenFold">
-        <item name="android:windowBackground">@android:color/black</item>
+        <!-- The phone's own wallpaper shows behind Home (see ui/Wallpaper.kt). -->
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowShowWallpaper">true</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">false</item>
     </style>

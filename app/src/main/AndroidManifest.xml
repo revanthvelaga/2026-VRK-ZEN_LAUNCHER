@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Lets the launcher pull down the notification shade. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
@@ -16,6 +17,13 @@
          feeds, straight from the device — see feeds/FeedApi.kt. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- A launcher lists every installed app and every app's widgets — one of the uses
+         Google Play explicitly allows this permission for. Without it, Android 11+ can hide
+         some apps' widget providers (notably built-in phone widgets) from the picker. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
 
     <!-- Android 11+ package visibility: required to enumerate installed apps, and to
          find the default dialer/camera/browser/etc. for the dock and home grid. -->

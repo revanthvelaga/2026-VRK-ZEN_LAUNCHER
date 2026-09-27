@@ -46,13 +46,21 @@ hand-drawn zen circle, as its visual motif.
   on Home), **Widgets**, **Settings**. Swipe **down** for the notification
   shade, **up** for the all-apps drawer — or tap the **^** above the dock,
   or swipe up from the dock (which works even on a page whose own content
-  scrolls).
+  scrolls). Swipe down uses ZenFold's accessibility service when it's on
+  (a public API that works on every ROM), else the hidden StatusBarManager
+  call — and says to turn the service on if the phone blocks that.
 - **App pages (MIUI-style)** — keep swiping right past your home pages and
   every app that isn't on Home or in the dock is laid out A–Z, a full grid
   per page (as many rows as fit the screen). So each app lives in exactly
   one place: **Add to Home** moves it off the app pages, and removing it
   from Home puts it back — nothing gets lost. The dock and page dots stay
   put across Home and the app pages; Back returns to Home.
+- **Wallpaper** — Home shows the phone's own wallpaper (the Home theme sets
+  `windowShowWallpaper`), panning slightly as you swipe between pages.
+  Long-press empty space → **Wallpapers** opens the phone's wallpaper
+  picker; Settings → Wallpaper switches back to ZenFold's gradient. Android
+  no longer lets apps read the wallpaper's pixels, so glass panels over it
+  are tinted rather than blurred.
 - **Motion** — icons sink under your finger and spring back (no ripple),
   apps open zooming out of the tapped icon (`ActivityOptions`
   scale-up + `sourceBounds`), home pages shrink/dim slightly while you

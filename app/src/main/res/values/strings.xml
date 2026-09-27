@@ -2,6 +2,6 @@
     <string name="app_name">ZenFold</string>
     <string name="settings_app_name">ZenFold Settings</string>
     <string name="search_apps">Search apps</string>
-    <string name="lock_service_label">ZenFold double-tap to lock</string>
-    <string name="lock_service_description">Lets you double-tap an empty spot on the ZenFold home screen to turn the screen off. It doesn\'t read what\'s on your screen or anything you type.</string>
+    <string name="lock_service_label">ZenFold gestures</string>
+    <string name="lock_service_description">Lets you double-tap an empty spot on the ZenFold home screen to turn the screen off, and swipe down on it to open notifications. It doesn\'t read what\'s on your screen or anything you type.</string>
 </resources>

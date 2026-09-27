@@ -10,7 +10,8 @@ import android.view.accessibility.AccessibilityEvent
 import java.lang.ref.WeakReference
 
 /**
- * Powers "double-tap Home to turn the screen off". An accessibility service is the only way
+ * Powers "double-tap Home to turn the screen off", and swipe down for notifications on
+ * ROMs that block the older hidden call for that (see HomeScreen's expandNotificationShade). An accessibility service is the only way
  * a regular app can lock the screen without becoming a device admin (which would disable
  * fingerprint/face unlock on the next wake). It reads no events and no screen content.
  */
@@ -38,6 +39,10 @@ class LockScreenService : AccessibilityService() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
             return instance?.get()?.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN) == true
         }
+
+        /** Pulls down the notification shade; false when the service isn't on. */
+        fun openNotifications(): Boolean =
+            instance?.get()?.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS) == true
 
         fun isEnabled(context: Context): Boolean {
             val me = ComponentName(context, LockScreenService::class.java)

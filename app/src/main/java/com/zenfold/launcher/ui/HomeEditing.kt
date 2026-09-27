@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -78,6 +79,7 @@ internal fun HomeMenuSheet(
     hazeState: HazeState,
     onAddApps: () -> Unit,
     onWidgets: () -> Unit,
+    onWallpapers: () -> Unit,
     onSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -103,6 +105,7 @@ internal fun HomeMenuSheet(
         ) {
             MenuTile(Icons.Filled.Apps, "Add apps", style, onAddApps)
             MenuTile(Icons.Filled.Widgets, "Widgets", style, onWidgets)
+            MenuTile(Icons.Filled.Wallpaper, "Wallpapers", style, onWallpapers)
             MenuTile(Icons.Filled.Settings, "Settings", style, onSettings)
         }
     }

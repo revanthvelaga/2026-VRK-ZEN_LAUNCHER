@@ -1,5 +1,9 @@
 package com.zenfold.launcher.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,12 +17,20 @@ import com.zenfold.launcher.style.CustomStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 
-// Positions and radii mirror the HTML preview's CSS radial-gradients
-// (e.g. "circle at 18% 10% ... transparent 55%") on a phone-shaped screen.
+// With [phoneWallpaper], the phone's own wallpaper shows through the window (the Home
+// theme sets windowShowWallpaper and a transparent background), and this only adds a
+// light scrim so white labels stay readable on bright wallpapers. Android doesn't let
+// apps read that wallpaper's pixels any more, so glass surfaces over it are tinted, not
+// blurred. Otherwise it paints ZenFold's gradient: positions and radii mirror the HTML
+// preview's CSS radial-gradients (e.g. "circle at 18% 10% ... transparent 55%").
 // .haze() goes last so it captures the fully drawn wallpaper for the glass.
 @Composable
-fun Wallpaper(style: CustomStyle, hazeState: HazeState, modifier: Modifier = Modifier) {
+fun Wallpaper(style: CustomStyle, hazeState: HazeState, phoneWallpaper: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.haze(hazeState)) {
+        if (phoneWallpaper) {
+            Canvas(Modifier.fillMaxSize()) { drawRect(Color.Black.copy(alpha = 0.12f)) }
+            return@Box
+        }
         Canvas(Modifier.fillMaxSize()) {
             drawRect(
                 Brush.linearGradient(
@@ -37,4 +49,13 @@ fun Wallpaper(style: CustomStyle, hazeState: HazeState, modifier: Modifier = Mod
 private fun DrawScope.glow(color: Color, center: Offset, radius: Float) {
     if (color.alpha == 0f) return
     drawRect(Brush.radialGradient(listOf(color, Color.Transparent), center, radius))
+}
+
+/** The phone's own wallpaper picker (on MIUI/HyperOS, the Themes app's wallpaper page). */
+fun openWallpaperPicker(context: Context) {
+    try {
+        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Choose wallpaper"))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No wallpaper app found on this phone", Toast.LENGTH_SHORT).show()
+    }
 }
