@@ -1,0 +1,20 @@
+<!--
+    The ensō (円相): a single, imperfect brush-drawn circle, one of the most
+    recognizable symbols in Zen practice, traditionally painted in one
+    breath with a deliberate gap where the brush lifts. This vector
+    approximates that gap and the natural taper at the stroke's start/end.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M60,20 A34,34 0 1 1 30,78"
+        android:strokeColor="#F3F1EA"
+        android:strokeWidth="9"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+</vector>
