@@ -1,11 +1,13 @@
 package com.zenfold.launcher.ui
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
+import android.annotation.SuppressLint
+import android.content.Context
 import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -37,8 +39,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -68,6 +73,11 @@ import com.zenfold.launcher.GRID_COLUMNS
 import com.zenfold.launcher.GRID_ROWS
 import com.zenfold.launcher.GridPos
 import com.zenfold.launcher.feeds.FeedApiKeys
+import com.zenfold.launcher.home.HomeApp
+import com.zenfold.launcher.home.HomeFolder
+import com.zenfold.launcher.home.HomeItem
+import com.zenfold.launcher.home.HomeLayout
+import com.zenfold.launcher.notifications.ZenFoldNotificationListener
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.tasks.TaskItem
 import com.zenfold.launcher.widgets.WidgetArea
@@ -81,22 +91,28 @@ import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
+/** A home grid cell, resolved to installed apps and ready to draw. */
+private sealed interface HomeCell {
+    data class App(val app: AppEntry) : HomeCell
+    data class Folder(val name: String, val apps: List<AppEntry>) : HomeCell
+}
+
 @Composable
 fun HomeScreen(
     apps: List<AppEntry>,
     style: CustomStyle,
     enabledWidgets: Set<WidgetType>,
     recentPackages: List<String>,
-    homeLayout: Map<String, GridPos>,
-    hiddenHomeApps: Set<String>,
+    homeItems: List<HomeItem>,
+    hiddenApps: Set<String>,
     noteText: String,
     tasks: List<TaskItem>,
     feedKeys: FeedApiKeys,
     homeSignal: Int,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
-    onMoveApp: (String, GridPos) -> Unit,
-    onHideFromHome: (String) -> Unit,
+    onHomeItemsChange: (List<HomeItem>) -> Unit,
+    onHideApp: (String) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
     onAddTask: (String) -> Unit,
     onToggleTask: (String, Boolean) -> Unit,
@@ -106,27 +122,63 @@ fun HomeScreen(
     var focusSearch by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var widgetPickerOpen by remember { mutableStateOf(false) }
+    var openFolderAt by remember { mutableStateOf<GridPos?>(null) }
     val hazeState = remember { HazeState() }
     val now = rememberCurrentTimeMillis()
     val scope = rememberCoroutineScope()
+    val badged by ZenFoldNotificationListener.badgedPackages.collectAsState()
     // Page 0: Today (calendar, tasks, feeds). Page 1: the actual home screen — that's
     // the default. Page 2: all apps, MIUI-style — swipe right from home to reach it,
     // the same place "swipe up" / tapping Search lands you (AppDrawer is just this page).
     val pagerState = rememberPagerState(initialPage = 1) { 3 }
     val drawerOpen by remember { derivedStateOf { pagerState.currentPage == 2 } }
 
-    val home = remember(apps, recentPackages) { AppRepository.homeApps(context, apps, recentPackages) }
-    // Recent apps first, topped up with the dock/grid defaults so the row is never empty.
-    val suggested = remember(apps, recentPackages, home) {
-        (recentPackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } } + home.dock + home.grid)
-            .distinctBy { it.packageName }
+    val appsByPackage = remember(apps) { apps.associateBy { it.packageName } }
+    val visibleApps = remember(apps, hiddenApps) { apps.filterNot { it.packageName in hiddenApps } }
+    // Uninstalled apps drop out here, not in storage — so an app mid-update never loses
+    // its spot, and a missing one never leaves an invisible, occupied cell behind.
+    val layout = remember(homeItems, appsByPackage) { HomeLayout.prune(homeItems, appsByPackage.keys) }
+    val cells = remember(layout, appsByPackage) {
+        layout.associate { item ->
+            item.pos to when (item) {
+                is HomeApp -> HomeCell.App(appsByPackage.getValue(item.packageName))
+                is HomeFolder -> HomeCell.Folder(item.name, item.packages.map(appsByPackage::getValue))
+            }
+        }
+    }
+    val dock = remember(apps, hiddenApps) {
+        AppRepository.homeApps(context, apps, emptyList()).dock.filterNot { it.packageName in hiddenApps }
+    }
+    // Recent apps first, topped up with the dock and Home so the row is never empty.
+    val suggested = remember(visibleApps, recentPackages, dock, layout) {
+        val visible = visibleApps.associateBy { it.packageName }
+        (recentPackages + dock.map { it.packageName } + layout.flatMap { it.packages })
+            .distinct()
+            .mapNotNull(visible::get)
             .take(4)
     }
-    // Apps keep a position the user dragged them to; anything else fills the remaining
-    // cells in order, so a freshly installed app (or first run) still shows up somewhere.
-    // "Removed from home" apps (long-press → Remove) are filtered out before that happens.
-    val gridApps = remember(home.grid, hiddenHomeApps) { home.grid.filterNot { it.packageName in hiddenHomeApps } }
-    val slots = remember(gridApps, homeLayout) { layoutGrid(gridApps, homeLayout) }
+    val openFolder = openFolderAt?.let { cells[it] as? HomeCell.Folder }
+    val overlayOpen = openFolder != null || widgetPickerOpen
+    val homeContentAlpha by animateFloatAsState(if (overlayOpen) 0f else 1f, label = "homeContentAlpha")
+
+    fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+
+    fun edit(next: List<HomeItem>?, whenFull: String = "Home screen is full — drop apps onto each other to make folders") {
+        when {
+            next == null -> toast(whenFull)
+            next != layout -> onHomeItemsChange(next)
+        }
+    }
+
+    fun addToHome(app: AppEntry) {
+        if (HomeLayout.contains(layout, app.packageName)) {
+            toast("${app.label} is already on Home")
+        } else {
+            val next = HomeLayout.addApp(layout, app.packageName)
+            edit(next)
+            if (next != null) toast("Added ${app.label} to Home")
+        }
+    }
 
     fun openDrawer(withKeyboard: Boolean) {
         query = ""
@@ -143,28 +195,44 @@ fun HomeScreen(
     LaunchedEffect(homeSignal) {
         focusSearch = false
         widgetPickerOpen = false
+        openFolderAt = null
         pagerState.scrollToPage(1)
+    }
+    // A folder that stops being a folder (its last-but-one app moved out) closes itself.
+    LaunchedEffect(openFolder == null) {
+        if (openFolder == null) openFolderAt = null
     }
     BackHandler(enabled = drawerOpen) { closeDrawer() }
     BackHandler(enabled = widgetPickerOpen) { widgetPickerOpen = false }
+    BackHandler(enabled = openFolderAt != null) { openFolderAt = null }
 
-    val openThreshold = with(LocalDensity.current) { 72.dp.toPx() }
-    val swipeUpToOpen = remember(openThreshold) {
+    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+    // Swipe up anywhere on Home opens the drawer; swipe down pulls the notification shade.
+    val homeSwipes = remember(swipeThreshold) {
         object : NestedScrollConnection {
-            var pulled = 0f
+            var pulledUp = 0f
+            var pulledDown = 0f
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.Drag && available.y < 0f) {
-                    pulled -= available.y
-                    if (pulled > openThreshold) {
-                        pulled = 0f
+                if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (available.y < 0f) {
+                    pulledUp -= available.y
+                    if (pulledUp > swipeThreshold) {
+                        pulledUp = 0f
                         openDrawer(withKeyboard = false)
+                    }
+                } else if (available.y > 0f) {
+                    pulledDown += available.y
+                    if (pulledDown > swipeThreshold) {
+                        pulledDown = 0f
+                        expandNotificationShade(context)
                     }
                 }
                 return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                pulled = 0f
+                pulledUp = 0f
+                pulledDown = 0f
                 return Velocity.Zero
             }
         }
@@ -173,7 +241,11 @@ fun HomeScreen(
     Box(Modifier.fillMaxSize()) {
         Wallpaper(style, hazeState, Modifier.fillMaxSize())
 
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = !overlayOpen,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
             when (page) {
                 0 -> TodayPanel(
                     style = style,
@@ -187,7 +259,10 @@ fun HomeScreen(
                 1 -> Column(
                     Modifier
                         .fillMaxSize()
-                        .nestedScroll(swipeUpToOpen)
+                        // Faded out under an open folder / the widget picker: Haze only
+                        // blurs the wallpaper, so Home would show through their glass.
+                        .graphicsLayer { alpha = homeContentAlpha }
+                        .nestedScroll(homeSwipes)
                         .pointerInput(Unit) { detectTapGestures(onLongPress = { widgetPickerOpen = true }) }
                         .statusBarsPadding()
                         .navigationBarsPadding()
@@ -212,38 +287,54 @@ fun HomeScreen(
                             onNoteChange = onNoteChange,
                             onLaunch = onLaunch
                         )
-                        FavoritesGrid(
-                            slots = slots,
+                        HomeGrid(
+                            cells = cells,
                             style = style,
+                            badged = badged,
                             onLaunch = onLaunch,
-                            onMove = { app, from, to ->
-                                val occupant = slots[to]?.takeIf { it.packageName != app.packageName }
-                                onMoveApp(app.packageName, to)
-                                occupant?.let { onMoveApp(it.packageName, from) }
+                            onOpenFolder = { openFolderAt = it },
+                            onDrop = { from, to ->
+                                edit(HomeLayout.drop(layout, from, to) { packages -> folderNameFor(context, packages) })
                             },
-                            onRemove = { onHideFromHome(it.packageName) }
+                            appActions = { app ->
+                                listOf(MenuAction("Remove from Home") { edit(HomeLayout.removeApp(layout, app.packageName)) })
+                            },
+                            onRemoveFolder = { pos ->
+                                edit(HomeLayout.removeAt(layout, pos))
+                                toast("Folder removed — its apps are still in the app drawer")
+                            }
                         )
                         Spacer(Modifier.height(8.dp))
                     }
 
                     Spacer(Modifier.height(12.dp))
                     SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
-                    if (home.dock.isNotEmpty()) {
+                    if (dock.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
-                        Dock(home.dock, style, hazeState, onLaunch)
+                        Dock(dock, style, hazeState, badged, onLaunch)
                     }
                     Spacer(Modifier.height(10.dp))
                 }
                 // Page 2: every installed app — reached by swiping right from Home, the
                 // same as "swipe up" or tapping Search (both just animate the pager here).
                 else -> AppDrawer(
-                    apps = apps,
+                    apps = visibleApps,
                     suggested = suggested,
                     style = style,
                     hazeState = hazeState,
+                    badged = badged,
                     query = query,
                     onQueryChange = { query = it },
                     focusSearch = focusSearch,
+                    appActions = { app ->
+                        listOf(
+                            MenuAction("Add to Home") { addToHome(app) },
+                            MenuAction("Hide app") {
+                                onHideApp(app.packageName)
+                                toast("${app.label} hidden — unhide it in ZenFold Settings")
+                            }
+                        )
+                    },
                     onLaunch = { app ->
                         onLaunch(app)
                         closeDrawer()
@@ -251,6 +342,31 @@ fun HomeScreen(
                     onDismiss = { closeDrawer() }
                 )
             }
+        }
+
+        val folderPos = openFolderAt
+        if (folderPos != null && openFolder != null) {
+            FolderOverlay(
+                name = openFolder.name,
+                apps = openFolder.apps,
+                style = style,
+                hazeState = hazeState,
+                badged = badged,
+                menuActions = { app ->
+                    listOf(
+                        MenuAction("Remove from folder") {
+                            edit(HomeLayout.moveOutOfFolder(layout, folderPos, app.packageName))
+                        },
+                        MenuAction("Remove from Home") { edit(HomeLayout.removeApp(layout, app.packageName)) }
+                    )
+                },
+                onLaunch = { app ->
+                    openFolderAt = null
+                    onLaunch(app)
+                },
+                onRename = { name -> edit(HomeLayout.renameFolder(layout, folderPos, name)) },
+                onDismiss = { openFolderAt = null }
+            )
         }
 
         if (widgetPickerOpen) {
@@ -262,6 +378,18 @@ fun HomeScreen(
                 onDismiss = { widgetPickerOpen = false }
             )
         }
+    }
+}
+
+// EXPAND_STATUS_BAR is an auto-granted permission, but there's no public API for this —
+// it's the same hidden StatusBarManager call every third-party launcher relies on.
+@SuppressLint("WrongConstant")
+private fun expandNotificationShade(context: Context) {
+    try {
+        val statusBar = context.getSystemService("statusbar") ?: return
+        statusBar.javaClass.getMethod("expandNotificationsPanel").invoke(statusBar)
+    } catch (e: ReflectiveOperationException) {
+        // A ROM that removed or renamed it: the gesture just does nothing there.
     }
 }
 
@@ -299,56 +427,25 @@ private fun ClockBlock(style: CustomStyle, now: Long) {
     }
 }
 
-// Apps with a saved position keep it; everyone else fills the remaining cells in order
-// (row-major), so newly-surfaced defaults or recents just appear in the first open spot.
-private fun layoutGrid(candidates: List<AppEntry>, saved: Map<String, GridPos>): Map<GridPos, AppEntry> {
-    val slots = mutableMapOf<GridPos, AppEntry>()
-    val placed = mutableSetOf<String>()
-    candidates.forEach { app ->
-        val pos = saved[app.packageName]
-        if (pos != null && pos.row in 0 until GRID_ROWS && pos.col in 0 until GRID_COLUMNS && pos !in slots) {
-            slots[pos] = app
-            placed += app.packageName
-        }
-    }
-    var cursor = 0
-    candidates.forEach { app ->
-        if (app.packageName in placed) return@forEach
-        while (cursor < GRID_ROWS * GRID_COLUMNS && GridPos(cursor / GRID_COLUMNS, cursor % GRID_COLUMNS) in slots) cursor++
-        if (cursor >= GRID_ROWS * GRID_COLUMNS) return@forEach
-        slots[GridPos(cursor / GRID_COLUMNS, cursor % GRID_COLUMNS)] = app
-        cursor++
-    }
-    return slots
-}
-
-private fun openAppInfo(context: android.content.Context, app: AppEntry) {
-    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", app.packageName, null)))
-}
-
-private fun uninstallApp(context: android.content.Context, app: AppEntry) {
-    context.startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.packageName, null)))
-}
-
-// Long-press and drag any icon to an empty cell, or onto another icon to swap places —
-// positions are saved per app, not a fixed list order. Long-press WITHOUT moving it
-// (release near where you picked it up) opens a menu instead: App info / Remove /
-// Uninstall.
+// Long-press and drag any icon or folder: onto an empty cell to move it, an app onto
+// another app to make a folder, an app onto a folder to add it. Long-press WITHOUT
+// moving (release near where you picked it up) opens its menu instead.
 @Composable
-private fun FavoritesGrid(
-    slots: Map<GridPos, AppEntry>,
+private fun HomeGrid(
+    cells: Map<GridPos, HomeCell>,
     style: CustomStyle,
+    badged: Set<String>,
     onLaunch: (AppEntry) -> Unit,
-    onMove: (app: AppEntry, from: GridPos, to: GridPos) -> Unit,
-    onRemove: (AppEntry) -> Unit
+    onOpenFolder: (GridPos) -> Unit,
+    onDrop: (from: GridPos, to: GridPos) -> Unit,
+    appActions: (AppEntry) -> List<MenuAction>,
+    onRemoveFolder: (GridPos) -> Unit
 ) {
-    val context = LocalContext.current
     val density = LocalDensity.current
-    var dragging by remember { mutableStateOf<AppEntry?>(null) }
+    var dragFrom by remember { mutableStateOf<GridPos?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    var dragOrigin by remember { mutableStateOf(GridPos(0, 0)) }
     var hoverTarget by remember { mutableStateOf<GridPos?>(null) }
-    var menuFor by remember { mutableStateOf<String?>(null) }
+    var menuAt by remember { mutableStateOf<GridPos?>(null) }
     val haptics = LocalHapticFeedback.current
     val tapSlopPx = with(density) { 12.dp.toPx() }
 
@@ -363,76 +460,111 @@ private fun FavoritesGrid(
                 .fillMaxWidth()
                 .height(rowDp * GRID_ROWS)
         ) {
-            hoverTarget?.takeIf { it != dragOrigin }?.let { target ->
+            hoverTarget?.takeIf { it != dragFrom }?.let { target ->
+                val shape = RoundedCornerShape(20.dp)
                 Box(
                     Modifier
                         .offset { IntOffset((target.col * cellPx).roundToInt(), (target.row * rowPx).roundToInt()) }
                         .size(cellDp, rowDp)
                         .padding(4.dp)
-                        .background(style.accent.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
+                        // Onto an occupied cell = make or join a folder: a ring, not a fill.
+                        .then(
+                            if (target in cells) {
+                                Modifier.border(2.dp, style.accent.copy(alpha = 0.8f), shape)
+                            } else {
+                                Modifier.background(style.accent.copy(alpha = 0.22f), shape)
+                            }
+                        )
                 )
             }
 
-            slots.forEach { (pos, app) ->
-                val isDragging = dragging?.packageName == app.packageName
-                val baseX = pos.col * cellPx
-                val baseY = pos.row * rowPx
+            cells.forEach { (pos, cell) ->
+                key(pos, cell) {
+                    val isDragging = pos == dragFrom
+                    val baseX = pos.col * cellPx
+                    val baseY = pos.row * rowPx
 
-                Box(
-                    Modifier
-                        .offset {
-                            if (isDragging) {
-                                IntOffset((baseX + dragOffset.x).roundToInt(), (baseY + dragOffset.y).roundToInt())
-                            } else {
-                                IntOffset(baseX.roundToInt(), baseY.roundToInt())
+                    fun resetDrag() {
+                        dragFrom = null
+                        hoverTarget = null
+                        dragOffset = Offset.Zero
+                    }
+
+                    Box(
+                        Modifier
+                            .offset {
+                                if (isDragging) {
+                                    IntOffset((baseX + dragOffset.x).roundToInt(), (baseY + dragOffset.y).roundToInt())
+                                } else {
+                                    IntOffset(baseX.roundToInt(), baseY.roundToInt())
+                                }
+                            }
+                            .size(cellDp, rowDp)
+                            .zIndex(if (isDragging) 1f else 0f)
+                            .pointerInput(pos, cell) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        dragFrom = pos
+                                        dragOffset = Offset.Zero
+                                        hoverTarget = pos
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        dragOffset += amount
+                                        val col = ((baseX + dragOffset.x + cellPx / 2) / cellPx).toInt().coerceIn(0, GRID_COLUMNS - 1)
+                                        val row = ((baseY + dragOffset.y + rowPx / 2) / rowPx).toInt().coerceIn(0, GRID_ROWS - 1)
+                                        hoverTarget = GridPos(row, col)
+                                    },
+                                    onDragEnd = {
+                                        val moved = hypot(dragOffset.x, dragOffset.y) > tapSlopPx
+                                        val target = hoverTarget
+                                        if (!moved) {
+                                            menuAt = pos
+                                        } else if (target != null && target != pos) {
+                                            onDrop(pos, target)
+                                        }
+                                        resetDrag()
+                                    },
+                                    onDragCancel = { resetDrag() }
+                                )
+                            },
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        when (cell) {
+                            is HomeCell.App -> {
+                                AppIcon(
+                                    cell.app,
+                                    style = style,
+                                    showLabel = style.showHomeLabels,
+                                    badged = cell.app.packageName in badged,
+                                    onClick = { onLaunch(cell.app) }
+                                )
+                                AppActionsMenu(
+                                    cell.app,
+                                    expanded = menuAt == pos,
+                                    onDismiss = { menuAt = null },
+                                    actions = if (menuAt == pos) appActions(cell.app) else emptyList()
+                                )
+                            }
+                            is HomeCell.Folder -> {
+                                FolderIcon(
+                                    name = cell.name,
+                                    apps = cell.apps,
+                                    style = style,
+                                    showLabel = style.showHomeLabels,
+                                    badged = cell.apps.any { it.packageName in badged },
+                                    onClick = { onOpenFolder(pos) }
+                                )
+                                DropdownMenu(expanded = menuAt == pos, onDismissRequest = { menuAt = null }) {
+                                    DropdownMenuItem(text = { Text("Open") }, onClick = { menuAt = null; onOpenFolder(pos) })
+                                    DropdownMenuItem(
+                                        text = { Text("Remove folder from Home") },
+                                        onClick = { menuAt = null; onRemoveFolder(pos) }
+                                    )
+                                }
                             }
                         }
-                        .size(cellDp, rowDp)
-                        .zIndex(if (isDragging) 1f else 0f)
-                        // Keyed on the app's position too: after a swap, this cell's
-                        // coordinates change, and the gesture detector needs to restart
-                        // to pick up the new baseX/baseY rather than keep stale ones.
-                        .pointerInput(app.packageName, pos) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    dragging = app
-                                    dragOrigin = pos
-                                    dragOffset = Offset.Zero
-                                    hoverTarget = pos
-                                },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    dragOffset += amount
-                                    val col = ((baseX + dragOffset.x + cellPx / 2) / cellPx).toInt().coerceIn(0, GRID_COLUMNS - 1)
-                                    val row = ((baseY + dragOffset.y + rowPx / 2) / rowPx).toInt().coerceIn(0, GRID_ROWS - 1)
-                                    hoverTarget = GridPos(row, col)
-                                },
-                                onDragEnd = {
-                                    val moved = hypot(dragOffset.x, dragOffset.y) > tapSlopPx
-                                    if (moved) {
-                                        hoverTarget?.takeIf { it != dragOrigin }?.let { onMove(app, dragOrigin, it) }
-                                    } else {
-                                        menuFor = app.packageName
-                                    }
-                                    dragging = null
-                                    hoverTarget = null
-                                    dragOffset = Offset.Zero
-                                },
-                                onDragCancel = {
-                                    dragging = null
-                                    hoverTarget = null
-                                    dragOffset = Offset.Zero
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    AppIcon(app, style = style, showLabel = style.showHomeLabels, onClick = { onLaunch(app) })
-                    DropdownMenu(expanded = menuFor == app.packageName, onDismissRequest = { menuFor = null }) {
-                        DropdownMenuItem(text = { Text("App info") }, onClick = { menuFor = null; openAppInfo(context, app) })
-                        DropdownMenuItem(text = { Text("Remove from Home") }, onClick = { menuFor = null; onRemove(app) })
-                        DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menuFor = null; uninstallApp(context, app) })
                     }
                 }
             }
@@ -468,7 +600,13 @@ private fun SearchPill(style: CustomStyle, hazeState: HazeState, onClick: () -> 
 }
 
 @Composable
-private fun Dock(apps: List<AppEntry>, style: CustomStyle, hazeState: HazeState, onLaunch: (AppEntry) -> Unit) {
+private fun Dock(
+    apps: List<AppEntry>,
+    style: CustomStyle,
+    hazeState: HazeState,
+    badged: Set<String>,
+    onLaunch: (AppEntry) -> Unit
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -479,7 +617,7 @@ private fun Dock(apps: List<AppEntry>, style: CustomStyle, hazeState: HazeState,
         verticalAlignment = Alignment.CenterVertically
     ) {
         apps.forEach { app ->
-            AppIcon(app, style = style, showLabel = false, onClick = { onLaunch(app) })
+            AppIcon(app, style = style, showLabel = false, badged = app.packageName in badged, onClick = { onLaunch(app) })
         }
     }
 }

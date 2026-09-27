@@ -2,11 +2,14 @@ package com.zenfold.launcher.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -33,32 +36,63 @@ import kotlin.math.abs
 import kotlin.math.min
 
 @Composable
-fun AppIcon(app: AppEntry, style: CustomStyle, showLabel: Boolean = true, onClick: () -> Unit) {
-    val crystal = style.iconStyle == IconStyle.CRYSTAL
-    val art = remember(app.packageName, crystal) { iconArt(app, crystal) }
-
+fun AppIcon(
+    app: AppEntry,
+    style: CustomStyle,
+    showLabel: Boolean = true,
+    badged: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(style.iconSize.sizeDp.dp)
-                .clip(style.iconShapeKind.shape)
-        ) {
-            when (art) {
-                is IconArt.Original -> Image(bitmap = art.bitmap, contentDescription = app.label)
-                is IconArt.Crystal -> CrystalTile(art, app.label)
-            }
-        }
-        if (showLabel) {
-            Text(
-                text = app.label,
-                fontSize = (12 * style.fontScale.scale).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = style.onBackground.copy(alpha = 0.88f)
+        Box {
+            AppIconImage(
+                app,
+                style,
+                Modifier
+                    .size(style.iconSize.sizeDp.dp)
+                    .clip(style.iconShapeKind.shape)
+                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             )
+            if (badged) NotificationDot(style, Modifier.align(Alignment.TopEnd))
+        }
+        if (showLabel) IconLabel(app.label, style)
+    }
+}
+
+/** Just the icon art (original or crystal), sized and clipped by the caller. */
+@Composable
+fun AppIconImage(app: AppEntry, style: CustomStyle, modifier: Modifier = Modifier) {
+    val crystal = style.iconStyle == IconStyle.CRYSTAL
+    val art = remember(app.packageName, app.icon, crystal) { iconArt(app, crystal) }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        when (art) {
+            is IconArt.Original -> Image(bitmap = art.bitmap, contentDescription = app.label, modifier = Modifier.fillMaxSize())
+            is IconArt.Crystal -> CrystalTile(art, app.label)
         }
     }
+}
+
+@Composable
+internal fun IconLabel(text: String, style: CustomStyle) {
+    Text(
+        text = text,
+        fontSize = (12 * style.fontScale.scale).sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        color = style.onBackground.copy(alpha = 0.88f)
+    )
+}
+
+@Composable
+internal fun NotificationDot(style: CustomStyle, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .offset(x = 3.dp, y = (-3).dp)
+            .size(11.dp)
+            .background(style.accent, CircleShape)
+            .border(1.5.dp, style.background, CircleShape)
+    )
 }
 
 @Composable

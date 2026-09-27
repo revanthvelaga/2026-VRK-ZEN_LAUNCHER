@@ -12,22 +12,39 @@ hand-drawn zen circle, as its visual motif.
 - `MainActivity.kt` — registers as a real Android Home app (see the
   `AndroidManifest.xml` intent-filter) and hosts the Compose UI.
 - `AppRepository.kt` — queries the real list of installed, launchable apps
-  via `PackageManager`.
-- `ui/HomeScreen.kt` — live clock, widgets, a real 4×4 drag-to-arrange icon
-  grid, and a glass search bar + dock. The dock holds the phone's own default
-  dialer, SMS app, camera and browser; the grid starts from other defaults
-  (gallery, maps, music, calendar...) plus recent apps
-  (`AppRepository.homeApps`), but every icon can be dragged to any cell —
-  positions are saved per app (`StylePreferences.homeLayout`), not a fixed
-  list order. Long-press an icon without moving it for a menu: **App info**,
-  **Remove from Home** (unlists it, doesn't touch the install), **Uninstall**
-  (the real system uninstall flow). Home sits on a 3-page `HorizontalPager`:
-  swipe left for the Today panel (see `ui/TodayPanel.kt`), swipe right —
-  MIUI-style — for every installed app (`ui/AppDrawer.kt`, the same drawer
-  "swipe up" or tapping Search also lands you on; it's just the page to the
-  right now, not a separate overlay). Long-press *empty* Home space opens a
-  quick widget on/off picker (`widgets/WidgetPickerOverlay`) — full Settings
-  now lives in its own app, see below.
+  via `PackageManager`; `ui/InstalledApps.kt` keeps that list live
+  (`LauncherApps.Callback`), so apps installed or uninstalled while the
+  launcher is running appear/disappear without a restart.
+- `home/HomeLayout.kt` — the home grid as an explicit list the user owns:
+  each cell holds an app or a **folder**. Nothing appears on Home unless you
+  put it there (the one exception: the first launch seeds it with your
+  default gallery/maps/music/calendar... apps, or carries over the older
+  per-app layout). Every edit — move, make folder, add to folder, rename,
+  remove — is a pure function over that list, persisted by
+  `StylePreferences.homeItems`.
+- `ui/HomeScreen.kt` — live clock, widgets, the 4×4 home grid, and a glass
+  search bar + dock (the phone's own default dialer, SMS app, camera and
+  browser). Long-press and drag an icon: onto an empty cell to move it,
+  **onto another app to make a folder** (auto-named from the apps' shared
+  Play Store category — "Games", "Social & Communication"... — else
+  "Folder"), onto a folder to add it. Folders (`ui/Folders.kt`) show a 2×2
+  preview of their first four apps; tap one to open it, tap its title to
+  rename it. Long-press without moving for a menu: the app's own
+  **shortcuts** ("New message", "Compose"...), **Remove from Home**, **App
+  info**, **Uninstall**. Swipe **down** anywhere on Home to pull down the
+  notification shade; swipe up (or tap Search) for all apps. Home sits on a
+  3-page `HorizontalPager`: swipe left for the Today panel (see
+  `ui/TodayPanel.kt`), swipe right — MIUI-style — for every installed app.
+  Long-press *empty* Home space opens a quick widget on/off picker
+  (`widgets/WidgetPickerOverlay`) — full Settings lives in its own app.
+- **Notification dots** — `notifications/ZenFoldNotificationListener.kt`
+  publishes which apps have dot-worthy notifications (skipping ongoing ones
+  like music, and channels marked "no dot"), shown on icons in Home,
+  folders, the dock and the drawer. Needs notification access — Settings
+  shows whether it's on and links to the system toggle.
+- `ui/AppActions.kt` — the shared long-press menu. App shortcuts come from
+  `LauncherApps`, which Android only lets the *default* Home app read — so
+  they appear once ZenFold is set as your launcher.
 - `ui/TodayPanel.kt` — the page to the left of home. **Tasks** (an
   add/check-off/remove list, persisted by `tasks/TaskPreferences.kt`), a
   real **Calendar** month grid (prev/next-month arrows, a dot on any day
@@ -59,8 +76,10 @@ hand-drawn zen circle, as its visual motif.
   in.
 - `ui/AppDrawer.kt` — the all-apps page (swipe right from Home, or swipe up
   / tap Search): search field, "Suggested" row of recent apps, and an A–Z
-  rail you can tap or drag. Pull down at the top of the list (or press
-  Back/Home) to return to Home.
+  rail you can tap or drag. Long-press any app for its shortcuts plus **Add
+  to Home** and **Hide app** (hidden apps leave the drawer, search and Home;
+  unhide them in Settings → Hidden apps). Pull down at the top of the list
+  (or press Back/Home) to return to Home.
 - `SettingsActivity.kt` / `ui/SettingsScreen.kt` — Settings is a second,
   ordinary launcher-icon entry (`AndroidManifest.xml`: `LAUNCHER` category
   but deliberately *not* `HOME`), so it shows up in the app drawer like any

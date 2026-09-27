@@ -13,6 +13,7 @@ import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.style.StylePreferences
 import com.zenfold.launcher.ui.SettingsScreen
+import com.zenfold.launcher.ui.rememberInstalledApps
 import com.zenfold.launcher.ui.theme.ZenFoldTheme
 import com.zenfold.launcher.widgets.WidgetType
 import kotlinx.coroutines.launch
@@ -33,6 +34,8 @@ class SettingsActivity : ComponentActivity() {
             val style by stylePreferences.customStyle.collectAsState(initial = StylePresets.default)
             val enabledWidgets by stylePreferences.enabledWidgets.collectAsState(initial = setOf(WidgetType.GLANCE))
             val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
+            val apps = rememberInstalledApps()
+            val hiddenPackages by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val scope = rememberCoroutineScope()
 
             ZenFoldTheme(style = style) {
@@ -40,6 +43,8 @@ class SettingsActivity : ComponentActivity() {
                     style = style,
                     enabledWidgets = enabledWidgets,
                     feedKeys = feedKeys,
+                    hiddenApps = apps.filter { it.packageName in hiddenPackages },
+                    onUnhideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, false) } },
                     onApplyPreset = { preset: CustomStyle -> scope.launch { stylePreferences.applyPreset(preset) } },
                     onChange = { next: CustomStyle -> scope.launch { stylePreferences.update { next } } },
                     onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },

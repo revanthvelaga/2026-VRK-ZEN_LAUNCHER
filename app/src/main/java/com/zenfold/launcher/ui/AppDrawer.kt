@@ -96,13 +96,37 @@ fun AppDrawer(
     suggested: List<AppEntry>,
     style: CustomStyle,
     hazeState: HazeState,
+    badged: Set<String>,
     query: String,
     onQueryChange: (String) -> Unit,
     focusSearch: Boolean,
+    appActions: (AppEntry) -> List<MenuAction>,
     onLaunch: (AppEntry) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Keyed by grid item key, not package: an app can be in both Suggested and A–Z.
+    var menuFor by remember { mutableStateOf<String?>(null) }
+
+    @Composable
+    fun DrawerApp(key: String, app: AppEntry) {
+        Box(contentAlignment = Alignment.TopCenter) {
+            AppIcon(
+                app,
+                style = style,
+                badged = app.packageName in badged,
+                onLongClick = { menuFor = key },
+                onClick = { onLaunch(app) }
+            )
+            AppActionsMenu(
+                app,
+                expanded = menuFor == key,
+                onDismiss = { menuFor = null },
+                actions = if (menuFor == key) appActions(app) else emptyList()
+            )
+        }
+    }
+
     val searching = query.isNotBlank()
     val results = remember(apps, query) {
         val q = query.trim()
@@ -218,7 +242,7 @@ fun AppDrawer(
                             }
                         }
                         items(results, key = { "r-" + it.packageName }) { app ->
-                            AppIcon(app, style = style, onClick = { onLaunch(app) })
+                            DrawerApp("r-" + app.packageName, app)
                         }
                     } else {
                         if (showSuggested) {
@@ -226,7 +250,7 @@ fun AppDrawer(
                                 SectionLabel("Suggested", style)
                             }
                             items(suggested, key = { "s-" + it.packageName }) { app ->
-                                AppIcon(app, style = style, onClick = { onLaunch(app) })
+                                DrawerApp("s-" + app.packageName, app)
                             }
                             item(key = "h-all", span = { GridItemSpan(maxLineSpan) }) {
                                 SectionLabel("All apps", style)
@@ -237,7 +261,7 @@ fun AppDrawer(
                                 LetterHeader(section.letter, style)
                             }
                             items(section.apps, key = { "a-" + it.packageName }) { app ->
-                                AppIcon(app, style = style, onClick = { onLaunch(app) })
+                                DrawerApp("a-" + app.packageName, app)
                             }
                         }
                     }

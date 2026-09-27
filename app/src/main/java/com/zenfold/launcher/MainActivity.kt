@@ -12,17 +12,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.feeds.FeedPreferences
+import com.zenfold.launcher.home.HomeLayout
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.style.StylePreferences
 import com.zenfold.launcher.tasks.TaskPreferences
 import com.zenfold.launcher.ui.HomeScreen
+import com.zenfold.launcher.ui.rememberInstalledApps
 import com.zenfold.launcher.ui.theme.ZenFoldTheme
 import com.zenfold.launcher.widgets.WidgetType
 import kotlinx.coroutines.launch
@@ -46,16 +47,26 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            val apps = remember { AppRepository.installedApps(this) }
+            val apps = rememberInstalledApps()
             val style by stylePreferences.customStyle.collectAsState(initial = StylePresets.default)
             val enabledWidgets by stylePreferences.enabledWidgets.collectAsState(initial = setOf(WidgetType.GLANCE))
             val noteText by stylePreferences.noteText.collectAsState(initial = "")
             val recentPackages by stylePreferences.recentPackages.collectAsState(initial = emptyList())
-            val homeLayout by stylePreferences.homeLayout.collectAsState(initial = emptyMap())
-            val hiddenHomeApps by stylePreferences.hiddenHomeApps.collectAsState(initial = emptySet())
+            val homeItems by stylePreferences.homeItems.collectAsState(initial = emptyList())
+            val hiddenApps by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val tasks by taskPreferences.tasks.collectAsState(initial = emptyList())
             val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
             val scope = rememberCoroutineScope()
+
+            // One-time: the default grid on a fresh install, or the pre-folders layout carried over.
+            LaunchedEffect(Unit) {
+                stylePreferences.seedHomeIfNeeded { oldPositions, oldRemoved, recents ->
+                    val defaults = AppRepository.homeApps(this@MainActivity, apps, recents).grid
+                        .map { it.packageName }
+                        .filterNot { it in oldRemoved }
+                    HomeLayout.seed(defaults, oldPositions)
+                }
+            }
 
             // A launcher has nothing "behind" it: Back on the home page does nothing
             // (HomeScreen's own BackHandlers for the drawer/widget picker take priority).
@@ -72,15 +83,15 @@ class MainActivity : ComponentActivity() {
                     style = style,
                     enabledWidgets = enabledWidgets,
                     recentPackages = recentPackages,
-                    homeLayout = homeLayout,
-                    hiddenHomeApps = hiddenHomeApps,
+                    homeItems = homeItems,
+                    hiddenApps = hiddenApps,
                     noteText = noteText,
                     tasks = tasks,
                     feedKeys = feedKeys,
                     homeSignal = homeSignal,
                     onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
-                    onMoveApp = { pkg, pos -> scope.launch { stylePreferences.setHomePosition(pkg, pos) } },
-                    onHideFromHome = { pkg -> scope.launch { stylePreferences.setHiddenFromHome(pkg, true) } },
+                    onHomeItemsChange = { items -> scope.launch { stylePreferences.setHomeItems(items) } },
+                    onHideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, true) } },
                     onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },
                     onAddTask = { text -> scope.launch { taskPreferences.add(text) } },
                     onToggleTask = { id, done -> scope.launch { taskPreferences.setDone(id, done) } },

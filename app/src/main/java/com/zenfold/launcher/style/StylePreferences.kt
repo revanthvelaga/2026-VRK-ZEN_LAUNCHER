@@ -12,6 +12,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zenfold.launcher.GridPos
+import com.zenfold.launcher.home.HomeItem
+import com.zenfold.launcher.home.HomeLayout
 import com.zenfold.launcher.widgets.WidgetType
 import kotlinx.coroutines.flow.map
 
@@ -38,8 +40,11 @@ private object Keys {
     val WIDGETS = stringPreferencesKey("widgets")
     val NOTE_TEXT = stringPreferencesKey("note_text")
     val RECENTS = stringPreferencesKey("recents")
+    // Pre-folders layout (per-app positions + "removed from home"); only read to seed HOME_ITEMS.
     val HOME_LAYOUT = stringPreferencesKey("home_layout")
     val HIDDEN_HOME = stringPreferencesKey("hidden_home")
+    val HOME_ITEMS = stringPreferencesKey("home_items")
+    val HIDDEN_APPS = stringPreferencesKey("hidden_apps")
 }
 
 private const val MAX_RECENTS = 8
@@ -102,8 +107,8 @@ class StylePreferences(private val context: Context) {
     val enabledWidgets = context.launcherPrefs.data.map { it.toWidgetSet() }
     val noteText = context.launcherPrefs.data.map { it[Keys.NOTE_TEXT] ?: "" }
     val recentPackages = context.launcherPrefs.data.map { it.toRecentPackages() }
-    val homeLayout = context.launcherPrefs.data.map { it.toHomeLayout() }
-    val hiddenHomeApps = context.launcherPrefs.data.map { it.toHiddenHomeApps() }
+    val homeItems = context.launcherPrefs.data.map { prefs -> prefs[Keys.HOME_ITEMS]?.let(HomeLayout::decode) ?: emptyList() }
+    val hiddenApps = context.launcherPrefs.data.map { it.toPackageSet(Keys.HIDDEN_APPS) }
 
     suspend fun applyPreset(style: CustomStyle) {
         context.launcherPrefs.edit { prefs -> prefs.writeCustomStyle(style) }
@@ -136,20 +141,38 @@ class StylePreferences(private val context: Context) {
         }
     }
 
-    /** Where the user dragged an app to. Only ever set explicitly — never by auto-placement. */
-    suspend fun setHomePosition(packageName: String, pos: GridPos) {
+    suspend fun setHomeItems(items: List<HomeItem>) {
+        context.launcherPrefs.edit { prefs -> prefs[Keys.HOME_ITEMS] = HomeLayout.encode(items) }
+    }
+
+    /**
+     * Builds the home grid once — from the pre-folders layout if there is one, else the
+     * defaults — and never again: after this, only the user decides what's on Home.
+     */
+    suspend fun seedHomeIfNeeded(
+        seed: (oldPositions: Map<String, GridPos>, oldRemoved: Set<String>, recents: List<String>) -> List<HomeItem>
+    ) {
         context.launcherPrefs.edit { prefs ->
-            val next = prefs.toHomeLayout() + (packageName to pos)
-            prefs[Keys.HOME_LAYOUT] = next.entries.joinToString(",") { (pkg, p) -> "$pkg:${p.row}:${p.col}" }
+            if (prefs[Keys.HOME_ITEMS] == null) {
+                val items = seed(prefs.toHomeLayout(), prefs.toPackageSet(Keys.HIDDEN_HOME), prefs.toRecentPackages())
+                prefs[Keys.HOME_ITEMS] = HomeLayout.encode(items)
+            }
         }
     }
 
-    /** "Remove from home" — the app stays installed and in the drawer, just off the grid. */
-    suspend fun setHiddenFromHome(packageName: String, hidden: Boolean) {
+    /** Hidden apps leave the drawer, search and Home; they stay installed. */
+    suspend fun setAppHidden(packageName: String, hidden: Boolean) {
         context.launcherPrefs.edit { prefs ->
-            val current = prefs.toHiddenHomeApps().toMutableSet()
-            if (hidden) current += packageName else current -= packageName
-            prefs[Keys.HIDDEN_HOME] = current.joinToString(",")
+            val current = prefs.toPackageSet(Keys.HIDDEN_APPS).toMutableSet()
+            if (hidden) {
+                current += packageName
+                prefs[Keys.HOME_ITEMS]?.let { raw ->
+                    prefs[Keys.HOME_ITEMS] = HomeLayout.encode(HomeLayout.removeApp(HomeLayout.decode(raw), packageName))
+                }
+            } else {
+                current -= packageName
+            }
+            prefs[Keys.HIDDEN_APPS] = current.joinToString(",")
         }
     }
 }
@@ -157,8 +180,8 @@ class StylePreferences(private val context: Context) {
 private fun Preferences.toRecentPackages(): List<String> =
     this[Keys.RECENTS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
 
-private fun Preferences.toHiddenHomeApps(): Set<String> =
-    this[Keys.HIDDEN_HOME]?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+private fun Preferences.toPackageSet(key: Preferences.Key<String>): Set<String> =
+    this[key]?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
 
 private fun Preferences.toHomeLayout(): Map<String, GridPos> {
     val raw = this[Keys.HOME_LAYOUT] ?: return emptyMap()

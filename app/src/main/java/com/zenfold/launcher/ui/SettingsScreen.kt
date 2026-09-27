@@ -26,10 +26,20 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.zenfold.launcher.AppEntry
+import com.zenfold.launcher.notifications.ZenFoldNotificationListener
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -52,6 +62,8 @@ fun SettingsScreen(
     style: CustomStyle,
     enabledWidgets: Set<WidgetType>,
     feedKeys: FeedApiKeys,
+    hiddenApps: List<AppEntry>,
+    onUnhideApp: (String) -> Unit,
     onApplyPreset: (CustomStyle) -> Unit,
     onChange: (CustomStyle) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
@@ -178,6 +190,32 @@ fun SettingsScreen(
             }
 
             item {
+                SettingsSection(style, "Notification dots") {
+                    NotificationDotsRow(style)
+                }
+            }
+
+            item {
+                SettingsSection(style, "Hidden apps") {
+                    if (hiddenApps.isEmpty()) {
+                        Text(
+                            "None. Long-press an app in the app drawer and choose Hide app.",
+                            fontSize = 12.sp,
+                            color = style.onSurfaceVariant
+                        )
+                    }
+                    hiddenApps.forEach { app ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            AppIconImage(app, style, Modifier.size(36.dp).clip(style.iconShapeKind.shape))
+                            Spacer(Modifier.width(12.dp))
+                            Text(app.label, fontSize = 14.sp, color = style.onBackground, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { onUnhideApp(app.packageName) }) { Text("Unhide") }
+                        }
+                    }
+                }
+            }
+
+            item {
                 SettingsSection(style, "Feeds") {
                     Text(
                         "Optional — add your own free API keys to show live gold, Sensex and " +
@@ -198,6 +236,35 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+// Dots come from the same notification access the Notifications widget uses, which Android
+// only lets the user grant by hand — so show whether it's on, re-checked on every return here.
+@Composable
+private fun NotificationDotsRow(style: CustomStyle) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var enabled by remember { mutableStateOf(ZenFoldNotificationListener.isEnabled(context)) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) enabled = ZenFoldNotificationListener.isEnabled(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (enabled) "On — apps with unread notifications show a dot" else "Off — needs notification access",
+            fontSize = 14.sp,
+            color = style.onBackground,
+            modifier = Modifier.weight(1f)
+        )
+        if (!enabled) {
+            TextButton(onClick = { ZenFoldNotificationListener.openSettings(context) }) { Text("Allow") }
         }
     }
 }

@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
+import android.service.notification.NotificationListenerService.Ranking
+import android.service.notification.NotificationListenerService.RankingMap
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,8 +38,31 @@ class ZenFoldNotificationListener : NotificationListenerService() {
         publish()
     }
 
+    // An app turning its notification-dot setting on/off arrives as a ranking change.
+    override fun onNotificationRankingUpdate(rankingMap: RankingMap) {
+        publish()
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        _previews.value = emptyList()
+        _badgedPackages.value = emptySet()
+    }
+
     private fun publish() {
-        _previews.value = activeNotifications
+        val active = activeNotifications ?: return
+        val ranking = Ranking()
+        val rankings = currentRanking
+        // Same rule as the system launcher: no dots for ongoing notifications (music,
+        // navigation...) or for channels the app or user marked "don't show dot".
+        _badgedPackages.value = active
+            .filter { sbn ->
+                sbn.packageName != packageName && !sbn.isOngoing &&
+                    (rankings == null || (rankings.getRanking(sbn.key, ranking) && ranking.canShowBadge()))
+            }
+            .mapTo(mutableSetOf()) { it.packageName }
+
+        _previews.value = active
             .filterNot { it.packageName == packageName }
             .sortedByDescending { it.postTime }
             .mapNotNull { sbn ->
@@ -55,6 +80,10 @@ class ZenFoldNotificationListener : NotificationListenerService() {
     companion object {
         private val _previews = MutableStateFlow<List<NotificationPreview>>(emptyList())
         val previews: StateFlow<List<NotificationPreview>> = _previews.asStateFlow()
+
+        private val _badgedPackages = MutableStateFlow<Set<String>>(emptySet())
+        /** Apps that should show a notification dot on their icon. */
+        val badgedPackages: StateFlow<Set<String>> = _badgedPackages.asStateFlow()
 
         fun isEnabled(context: Context): Boolean =
             NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
