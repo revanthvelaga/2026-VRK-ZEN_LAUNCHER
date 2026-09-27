@@ -31,14 +31,16 @@ jobs:
       - name: Export Android SDK path
         run: echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
 
-      # Bump this key alongside the platform/build-tools versions below when either
-      # changes, so a stale cache never masks a version bump.
+      # Scoped to the exact version dirs sdkmanager installs below, not the whole
+      # platforms/build-tools trees -- those also hold every version the runner image
+      # ships preinstalled, and caching all of it made the cache-save step crawl.
+      # Bump this key alongside the versions below when either changes.
       - name: Cache Android SDK packages
         uses: actions/cache@v4
         with:
           path: |
-            ${{ env.ANDROID_HOME }}/platforms
-            ${{ env.ANDROID_HOME }}/build-tools
+            ${{ env.ANDROID_HOME }}/platforms/android-34
+            ${{ env.ANDROID_HOME }}/build-tools/34.0.0
           key: android-sdk-platform34-buildtools34.0.0
 
       # GitHub's ubuntu-latest runner already ships an Android SDK at $ANDROID_HOME —
