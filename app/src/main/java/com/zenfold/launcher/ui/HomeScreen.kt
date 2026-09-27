@@ -1,6 +1,8 @@
 package com.zenfold.launcher.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +16,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,16 +25,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zenfold.launcher.AppEntry
+import com.zenfold.launcher.style.CustomStyle
+import com.zenfold.launcher.widgets.WidgetArea
+import com.zenfold.launcher.widgets.WidgetType
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HomeScreen(apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit) {
+fun HomeScreen(
+    apps: List<AppEntry>,
+    style: CustomStyle,
+    enabledWidgets: Set<WidgetType>,
+    noteText: String,
+    onNoteChange: (String) -> Unit,
+    onLaunch: (AppEntry) -> Unit,
+    onOpenSettings: () -> Unit
+) {
     var drawerOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
@@ -45,27 +57,31 @@ fun HomeScreen(apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(style.background)
+            .combinedClickable(onClick = {}, onLongClick = onOpenSettings)
     ) {
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(top = 72.dp, start = 24.dp, end = 24.dp)
         ) {
-            ClockBlock()
-            Spacer(Modifier.height(48.dp))
+            ClockBlock(style)
+            Spacer(Modifier.height(24.dp))
+            WidgetArea(enabledWidgets, style, noteText, onNoteChange)
+            Spacer(Modifier.height(24.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(favorites) { app ->
-                    AppIcon(app, onClick = { onLaunch(app) })
+                    AppIcon(app, style = style, showLabel = style.showHomeLabels, onClick = { onLaunch(app) })
                 }
             }
         }
 
         // Pull-tab: tap (or, in a fuller build, swipe up) to open the drawer.
+        // Long-press anywhere on the home background to open launcher settings.
         TextButton(
             onClick = { drawerOpen = true; query = "" },
             modifier = Modifier
@@ -77,7 +93,7 @@ fun HomeScreen(apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit) {
                     .width(40.dp)
                     .height(5.dp)
                     .background(
-                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.35f),
+                        style.onBackground.copy(alpha = 0.35f),
                         RoundedCornerShape(3.dp)
                     )
             )
@@ -87,6 +103,7 @@ fun HomeScreen(apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit) {
     if (drawerOpen) {
         AppDrawer(
             apps = apps,
+            style = style,
             query = query,
             onQueryChange = { query = it },
             onLaunch = {
@@ -99,20 +116,23 @@ fun HomeScreen(apps: List<AppEntry>, onLaunch: (AppEntry) -> Unit) {
 }
 
 @Composable
-private fun ClockBlock() {
+private fun ClockBlock(style: CustomStyle) {
     val now = remember { Calendar.getInstance() }
     val time = remember { SimpleDateFormat("h:mm", Locale.getDefault()).format(now.time) }
     val date = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now.time) }
+    val alignment = if (style.clockCentered) Alignment.CenterHorizontally else Alignment.Start
 
-    Text(
-        text = time,
-        fontSize = 64.sp,
-        fontWeight = FontWeight.Light,
-        color = MaterialTheme.colorScheme.onBackground
-    )
-    Text(
-        text = date,
-        fontSize = 16.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    Column(horizontalAlignment = alignment, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = time,
+            fontSize = (64 * style.fontScale.scale).sp,
+            fontWeight = style.clockWeight,
+            color = style.onBackground
+        )
+        Text(
+            text = date,
+            fontSize = (16 * style.fontScale.scale).sp,
+            color = style.onSurfaceVariant
+        )
+    }
 }

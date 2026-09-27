@@ -1,0 +1,161 @@
+package com.zenfold.launcher.style
+
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.font.FontWeight
+
+/** Named quick-apply presets. Picking one fills in every field of [CustomStyle] at once. */
+enum class LauncherStyle(val displayName: String, val tagline: String) {
+    ZEN("Zen", "Quiet stone and moss — the original ZenFold look"),
+    PIXEL("Pixel", "Clean Material You, circular icons"),
+    SAMSUNG("Samsung", "Bold clock, soft squircle icons"),
+    ONEPLUS("OxygenOS", "Minimal glass, hidden labels"),
+    MIUI("Mi", "Vivid color, rounded-square icons")
+}
+
+enum class IconShapeKind(val shape: Shape, val label: String) {
+    SQUIRCLE(RoundedCornerShape(32), "Squircle"),
+    CIRCLE(CircleShape, "Circle"),
+    ROUNDED_SQUARE(RoundedCornerShape(20), "Rounded square"),
+    SQUARE(RoundedCornerShape(6), "Square")
+}
+
+enum class IconSize(val sizeDp: Int, val label: String) {
+    SMALL(48, "Small"),
+    MEDIUM(56, "Medium"),
+    LARGE(64, "Large")
+}
+
+enum class FontScale(val scale: Float, val label: String) {
+    SMALL(0.88f, "Small"),
+    MEDIUM(1f, "Medium"),
+    LARGE(1.16f, "Large")
+}
+
+enum class StatusBarStyle(val label: String) {
+    LIGHT_ICONS("Light icons"),
+    DARK_ICONS("Dark icons")
+}
+
+/** Every independently customizable piece of the launcher's look. */
+data class CustomStyle(
+    val background: Color,
+    val surface: Color,
+    val accent: Color,
+    val secondary: Color,
+    val onBackground: Color,
+    val onSurfaceVariant: Color,
+    val iconShapeKind: IconShapeKind,
+    val iconSize: IconSize,
+    val fontScale: FontScale,
+    val showHomeLabels: Boolean,
+    val clockCentered: Boolean,
+    val clockWeight: FontWeight,
+    val statusBarStyle: StatusBarStyle
+)
+
+/** A short list of accent swatches offered in Settings, independent of any preset. */
+object AccentSwatches {
+    val all = listOf(
+        Color(0xFF8A9A80), // moss
+        Color(0xFF5EC8FF), // ice blue
+        Color(0xFF4FA3FF), // sapphire
+        Color(0xFFFF6B35), // ember
+        Color(0xFFA78BFA), // violet
+        Color(0xFF22E0A0)  // emerald
+    )
+}
+
+object StylePresets {
+    val Zen = CustomStyle(
+        background = Color(0xFF16191A),
+        surface = Color(0xFF23282A),
+        accent = Color(0xFF8A9A80),
+        secondary = Color(0xFFC98A5B),
+        onBackground = Color(0xFFEDEAE1),
+        onSurfaceVariant = Color(0xFFB7BDB5),
+        iconShapeKind = IconShapeKind.SQUIRCLE,
+        iconSize = IconSize.MEDIUM,
+        fontScale = FontScale.MEDIUM,
+        showHomeLabels = true,
+        clockCentered = true,
+        clockWeight = FontWeight.Light,
+        statusBarStyle = StatusBarStyle.LIGHT_ICONS
+    )
+
+    val Pixel = CustomStyle(
+        background = Color(0xFF1A1C1E),
+        surface = Color(0xFF232629),
+        accent = Color(0xFFA8C7FA),
+        secondary = Color(0xFFFDE293),
+        onBackground = Color(0xFFE3E2E6),
+        onSurfaceVariant = Color(0xFFC4C6D0),
+        iconShapeKind = IconShapeKind.CIRCLE,
+        iconSize = IconSize.MEDIUM,
+        fontScale = FontScale.MEDIUM,
+        showHomeLabels = true,
+        clockCentered = false,
+        clockWeight = FontWeight.Normal,
+        statusBarStyle = StatusBarStyle.LIGHT_ICONS
+    )
+
+    val Samsung = CustomStyle(
+        background = Color(0xFF0B0F14),
+        surface = Color(0xFF141A21),
+        accent = Color(0xFF4FA3FF),
+        secondary = Color(0xFF7C9CBF),
+        onBackground = Color(0xFFEDF1F5),
+        onSurfaceVariant = Color(0xFFA9B4C0),
+        iconShapeKind = IconShapeKind.SQUIRCLE,
+        iconSize = IconSize.LARGE,
+        fontScale = FontScale.LARGE,
+        showHomeLabels = true,
+        clockCentered = true,
+        clockWeight = FontWeight.Light,
+        statusBarStyle = StatusBarStyle.LIGHT_ICONS
+    )
+
+    val OnePlus = CustomStyle(
+        background = Color(0xFF0A0E1A),
+        surface = Color(0xFF121A2E),
+        accent = Color(0xFF5EC8FF),
+        secondary = Color(0xFF8B5CF6),
+        onBackground = Color(0xFFF4F2FF),
+        onSurfaceVariant = Color(0xFFB7BEDD),
+        iconShapeKind = IconShapeKind.ROUNDED_SQUARE,
+        iconSize = IconSize.MEDIUM,
+        fontScale = FontScale.MEDIUM,
+        showHomeLabels = false,
+        clockCentered = true,
+        clockWeight = FontWeight.Light,
+        statusBarStyle = StatusBarStyle.LIGHT_ICONS
+    )
+
+    val Miui = CustomStyle(
+        background = Color(0xFF16110F),
+        surface = Color(0xFF241A16),
+        accent = Color(0xFFFF6B35),
+        secondary = Color(0xFFFFB454),
+        onBackground = Color(0xFFFBEFE9),
+        onSurfaceVariant = Color(0xFFD9BBAC),
+        iconShapeKind = IconShapeKind.ROUNDED_SQUARE,
+        iconSize = IconSize.MEDIUM,
+        fontScale = FontScale.MEDIUM,
+        showHomeLabels = true,
+        clockCentered = false,
+        clockWeight = FontWeight.Bold,
+        statusBarStyle = StatusBarStyle.DARK_ICONS
+    )
+
+    val presets: List<Pair<LauncherStyle, CustomStyle>> = listOf(
+        LauncherStyle.ZEN to Zen,
+        LauncherStyle.PIXEL to Pixel,
+        LauncherStyle.SAMSUNG to Samsung,
+        LauncherStyle.ONEPLUS to OnePlus,
+        LauncherStyle.MIUI to Miui
+    )
+
+    val default = Zen
+}

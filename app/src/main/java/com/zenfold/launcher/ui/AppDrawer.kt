@@ -23,11 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.R
+import com.zenfold.launcher.style.CustomStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppDrawer(
     apps: List<AppEntry>,
+    style: CustomStyle,
     query: String,
     onQueryChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
@@ -61,7 +63,7 @@ fun AppDrawer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filtered, key = { it.packageName }) { app ->
-                        AppIcon(app, onClick = { onLaunch(app) })
+                        AppIcon(app, style = style, onClick = { onLaunch(app) })
                     }
                 }
             }

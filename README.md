@@ -15,13 +15,28 @@ hand-drawn zen circle, as its visual motif.
   via `PackageManager`.
 - `ui/HomeScreen.kt`, `ui/AppDrawer.kt`, `ui/AppIcon.kt` — clock + favorites
   grid, and a searchable app drawer as a bottom sheet.
-- `ui/theme/` — a quiet, low-saturation Material3 theme (stone neutrals,
-  one moss accent).
+- `ui/SettingsScreen.kt` — long-press the home screen to open it. Lets you
+  pick a named style preset (Zen, Pixel, Samsung, OxygenOS, Mi) or tune each
+  piece yourself: accent color, icon shape and size, font size, whether
+  home-screen icons show labels, status bar icon color, and which widgets
+  are on the home screen.
+- `style/` — `LauncherStyle.kt` defines every customizable field
+  (`CustomStyle`) and the five presets; `StylePreferences.kt` persists the
+  current style and widget selection with Jetpack DataStore, so choices
+  survive a restart.
+- `widgets/Widgets.kt` — first-party home-screen widgets (Glance, Calendar,
+  Note) that can be added or removed from Settings. This hosts the
+  launcher's *own* widgets, not third-party Android app widgets — real
+  `AppWidgetHost` support (letting other apps' widgets be placed on the
+  home screen) is a separate, larger piece of work.
+- `ui/theme/Theme.kt` — builds the Material3 color scheme from whatever
+  `CustomStyle` is active, rather than a fixed palette.
 - `res/drawable/ic_zenfold_*.xml` — the ensō mark, used as the adaptive app
   icon and as an in-app logo.
 
 This is an early, working skeleton — not yet the full feature set discussed
-(gesture navigation, Shelf-style widgets page, hidden space, lock screen).
+(gesture navigation, real third-party widget hosting, hidden space, lock
+screen).
 
 ## Opening it
 
