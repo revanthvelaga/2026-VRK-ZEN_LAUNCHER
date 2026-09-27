@@ -1,5 +1,8 @@
 package com.zenfold.launcher.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -26,11 +29,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,19 +65,22 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import kotlin.math.roundToInt
 import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.AppRepository
 import com.zenfold.launcher.GRID_COLUMNS
 import com.zenfold.launcher.GRID_ROWS
 import com.zenfold.launcher.GridPos
 import com.zenfold.launcher.style.CustomStyle
+import com.zenfold.launcher.tasks.TaskItem
 import com.zenfold.launcher.widgets.WidgetArea
+import com.zenfold.launcher.widgets.WidgetPickerOverlay
 import com.zenfold.launcher.widgets.WidgetType
 import dev.chrisbanes.haze.HazeState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(
@@ -79,19 +89,29 @@ fun HomeScreen(
     enabledWidgets: Set<WidgetType>,
     recentPackages: List<String>,
     homeLayout: Map<String, GridPos>,
+    hiddenHomeApps: Set<String>,
     noteText: String,
+    tasks: List<TaskItem>,
     homeSignal: Int,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
     onMoveApp: (String, GridPos) -> Unit,
-    onOpenSettings: () -> Unit
+    onHideFromHome: (String) -> Unit,
+    onWidgetToggle: (WidgetType, Boolean) -> Unit,
+    onAddTask: (String) -> Unit,
+    onToggleTask: (String, Boolean) -> Unit,
+    onRemoveTask: (String) -> Unit
 ) {
     val context = LocalContext.current
     var drawerOpen by remember { mutableStateOf(false) }
     var focusSearch by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    var widgetPickerOpen by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
     val now = rememberCurrentTimeMillis()
+    // Page 0: the Today panel (calendar, tasks, storage). Page 1: the actual home
+    // screen — that's the default; swiping left from it reveals Today.
+    val pagerState = rememberPagerState(initialPage = 1) { 2 }
 
     val home = remember(apps, recentPackages) { AppRepository.homeApps(context, apps, recentPackages) }
     // Recent apps first, topped up with the dock/grid defaults so the row is never empty.
@@ -102,7 +122,9 @@ fun HomeScreen(
     }
     // Apps keep a position the user dragged them to; anything else fills the remaining
     // cells in order, so a freshly installed app (or first run) still shows up somewhere.
-    val slots = remember(home.grid, homeLayout) { layoutGrid(home.grid, homeLayout) }
+    // "Removed from home" apps (long-press → Remove) are filtered out before that happens.
+    val gridApps = remember(home.grid, hiddenHomeApps) { home.grid.filterNot { it.packageName in hiddenHomeApps } }
+    val slots = remember(gridApps, homeLayout) { layoutGrid(gridApps, homeLayout) }
 
     fun openDrawer(withKeyboard: Boolean) {
         query = ""
@@ -116,8 +138,13 @@ fun HomeScreen(
     }
 
     // Pressing Home while ZenFold is already showing should drop back to the home page.
-    LaunchedEffect(homeSignal) { closeDrawer() }
+    LaunchedEffect(homeSignal) {
+        closeDrawer()
+        widgetPickerOpen = false
+        pagerState.scrollToPage(1)
+    }
     BackHandler(enabled = drawerOpen) { closeDrawer() }
+    BackHandler(enabled = widgetPickerOpen) { widgetPickerOpen = false }
 
     val openThreshold = with(LocalDensity.current) { 72.dp.toPx() }
     val swipeUpToOpen = remember(openThreshold) {
@@ -144,62 +171,76 @@ fun HomeScreen(
     Box(Modifier.fillMaxSize()) {
         Wallpaper(style, hazeState, Modifier.fillMaxSize())
 
-        // Hidden (not just covered) while the drawer is open — Haze only blurs Wallpaper,
-        // so if this stayed on screen it would show through the drawer's glass, unblurred,
-        // on top of the drawer's own content. A real launcher hides home icons the same way.
-        AnimatedVisibility(
-            visible = !drawerOpen,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .nestedScroll(swipeUpToOpen)
-                    .pointerInput(Unit) { detectTapGestures(onLongPress = { onOpenSettings() }) }
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp)
-            ) {
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            if (page == 0) {
+                TodayPanel(
+                    style = style,
+                    hazeState = hazeState,
+                    tasks = tasks,
+                    onAddTask = onAddTask,
+                    onToggleTask = onToggleTask,
+                    onRemoveTask = onRemoveTask
+                )
+            } else {
+                // Hidden (not just covered) while the drawer is open — Haze only blurs
+                // Wallpaper, so if this stayed on screen it would show through the
+                // drawer's glass, unblurred, on top of the drawer's own content.
+                AnimatedVisibility(
+                    visible = !drawerOpen,
+                    enter = fadeIn(),
+                    exit = fadeOut()
                 ) {
-                    Spacer(Modifier.height(20.dp))
-                    ClockBlock(style, now)
-                    WidgetArea(
-                        enabled = enabledWidgets,
-                        style = style,
-                        hazeState = hazeState,
-                        now = now,
-                        apps = apps,
-                        recentPackages = recentPackages,
-                        noteText = noteText,
-                        onNoteChange = onNoteChange,
-                        onLaunch = onLaunch
-                    )
-                    FavoritesGrid(
-                        slots = slots,
-                        style = style,
-                        onLaunch = onLaunch,
-                        onMove = { app, from, to ->
-                            val occupant = slots[to]?.takeIf { it.packageName != app.packageName }
-                            onMoveApp(app.packageName, to)
-                            occupant?.let { onMoveApp(it.packageName, from) }
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .nestedScroll(swipeUpToOpen)
+                            .pointerInput(Unit) { detectTapGestures(onLongPress = { widgetPickerOpen = true }) }
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 20.dp)
+                    ) {
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(18.dp)
+                        ) {
+                            Spacer(Modifier.height(20.dp))
+                            ClockBlock(style, now)
+                            WidgetArea(
+                                enabled = enabledWidgets,
+                                style = style,
+                                hazeState = hazeState,
+                                now = now,
+                                apps = apps,
+                                recentPackages = recentPackages,
+                                noteText = noteText,
+                                onNoteChange = onNoteChange,
+                                onLaunch = onLaunch
+                            )
+                            FavoritesGrid(
+                                slots = slots,
+                                style = style,
+                                onLaunch = onLaunch,
+                                onMove = { app, from, to ->
+                                    val occupant = slots[to]?.takeIf { it.packageName != app.packageName }
+                                    onMoveApp(app.packageName, to)
+                                    occupant?.let { onMoveApp(it.packageName, from) }
+                                },
+                                onRemove = { onHideFromHome(it.packageName) }
+                            )
+                            Spacer(Modifier.height(8.dp))
                         }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
 
-                Spacer(Modifier.height(12.dp))
-                SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
-                if (home.dock.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Dock(home.dock, style, hazeState, onLaunch)
+                        Spacer(Modifier.height(12.dp))
+                        SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
+                        if (home.dock.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Dock(home.dock, style, hazeState, onLaunch)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
             }
         }
 
@@ -221,6 +262,16 @@ fun HomeScreen(
                     closeDrawer()
                 },
                 onDismiss = { closeDrawer() }
+            )
+        }
+
+        if (widgetPickerOpen) {
+            WidgetPickerOverlay(
+                style = style,
+                hazeState = hazeState,
+                enabled = enabledWidgets,
+                onToggle = onWidgetToggle,
+                onDismiss = { widgetPickerOpen = false }
             )
         }
     }
@@ -283,21 +334,35 @@ private fun layoutGrid(candidates: List<AppEntry>, saved: Map<String, GridPos>):
     return slots
 }
 
+private fun openAppInfo(context: android.content.Context, app: AppEntry) {
+    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", app.packageName, null)))
+}
+
+private fun uninstallApp(context: android.content.Context, app: AppEntry) {
+    context.startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", app.packageName, null)))
+}
+
 // Long-press and drag any icon to an empty cell, or onto another icon to swap places —
-// positions are saved per app, not a fixed list order.
+// positions are saved per app, not a fixed list order. Long-press WITHOUT moving it
+// (release near where you picked it up) opens a menu instead: App info / Remove /
+// Uninstall.
 @Composable
 private fun FavoritesGrid(
     slots: Map<GridPos, AppEntry>,
     style: CustomStyle,
     onLaunch: (AppEntry) -> Unit,
-    onMove: (app: AppEntry, from: GridPos, to: GridPos) -> Unit
+    onMove: (app: AppEntry, from: GridPos, to: GridPos) -> Unit,
+    onRemove: (AppEntry) -> Unit
 ) {
+    val context = LocalContext.current
     val density = LocalDensity.current
     var dragging by remember { mutableStateOf<AppEntry?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var dragOrigin by remember { mutableStateOf(GridPos(0, 0)) }
     var hoverTarget by remember { mutableStateOf<GridPos?>(null) }
+    var menuFor by remember { mutableStateOf<String?>(null) }
     val haptics = LocalHapticFeedback.current
+    val tapSlopPx = with(density) { 12.dp.toPx() }
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val cellPx = with(density) { maxWidth.toPx() } / GRID_COLUMNS
@@ -356,7 +421,12 @@ private fun FavoritesGrid(
                                     hoverTarget = GridPos(row, col)
                                 },
                                 onDragEnd = {
-                                    hoverTarget?.takeIf { it != dragOrigin }?.let { onMove(app, dragOrigin, it) }
+                                    val moved = hypot(dragOffset.x, dragOffset.y) > tapSlopPx
+                                    if (moved) {
+                                        hoverTarget?.takeIf { it != dragOrigin }?.let { onMove(app, dragOrigin, it) }
+                                    } else {
+                                        menuFor = app.packageName
+                                    }
                                     dragging = null
                                     hoverTarget = null
                                     dragOffset = Offset.Zero
@@ -371,6 +441,11 @@ private fun FavoritesGrid(
                     contentAlignment = Alignment.TopCenter
                 ) {
                     AppIcon(app, style = style, showLabel = style.showHomeLabels, onClick = { onLaunch(app) })
+                    DropdownMenu(expanded = menuFor == app.packageName, onDismissRequest = { menuFor = null }) {
+                        DropdownMenuItem(text = { Text("App info") }, onClick = { menuFor = null; openAppInfo(context, app) })
+                        DropdownMenuItem(text = { Text("Remove from Home") }, onClick = { menuFor = null; onRemove(app) })
+                        DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menuFor = null; uninstallApp(context, app) })
+                    }
                 }
             }
         }

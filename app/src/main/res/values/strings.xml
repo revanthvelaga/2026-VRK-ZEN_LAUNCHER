@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">ZenFold</string>
+    <string name="settings_app_name">ZenFold Settings</string>
     <string name="search_apps">Search apps</string>
 </resources>

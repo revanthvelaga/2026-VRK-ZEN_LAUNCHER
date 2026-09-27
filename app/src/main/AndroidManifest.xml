@@ -4,6 +4,10 @@
     <!-- Lets the launcher pull down the notification shade. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
+    <!-- Runtime-requested from the Today panel's Calendar card; the panel works fine
+         (shows a "tap to allow" prompt) if the user never grants it. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
     <!-- Android 11+ package visibility: required to enumerate installed apps, and to
          find the default dialer/camera/browser/etc. for the dock and home grid. -->
     <queries>
@@ -51,6 +55,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Settings on purpose is NOT category.HOME — it shows up as its own icon in
+             the app drawer (like any other app), rather than being reached through a
+             home-screen gesture. Long-press on the home screen opens the widget picker
+             instead; see HomeScreen's onLongPress. -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="@string/settings_app_name"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>

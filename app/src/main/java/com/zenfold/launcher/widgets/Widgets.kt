@@ -9,10 +9,12 @@ import android.os.BatteryManager
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.AlarmOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -38,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +66,54 @@ enum class WidgetType(val id: String, val title: String) {
     NOTE("note", "Note"),
     RECENTS("recents", "Recent apps"),
     NOTIFICATIONS("notifications", "Notifications")
+}
+
+// Long-pressing the home screen opens this instead of full Settings — a quick way to
+// turn widgets on/off without leaving the home screen. Full Settings (presets, colors,
+// icon shape...) lives in its own app now; see SettingsActivity.
+@Composable
+fun WidgetPickerOverlay(
+    style: CustomStyle,
+    hazeState: HazeState,
+    enabled: Set<WidgetType>,
+    onToggle: (WidgetType, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.35f))
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            Modifier
+                .padding(32.dp)
+                .fillMaxWidth()
+                .glass(hazeState, RoundedCornerShape(28.dp))
+                // Swallows taps so they don't fall through to the scrim behind and dismiss.
+                .pointerInput(Unit) { detectTapGestures { } }
+                .padding(20.dp)
+        ) {
+            Text("Widgets", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = style.onBackground)
+            Text(
+                "Choose what shows on your home screen",
+                fontSize = 12.sp,
+                color = style.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, bottom = 14.dp)
+            )
+            WidgetType.entries.forEach { widget ->
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(widget.title, fontSize = 14.sp, color = style.onBackground)
+                    Switch(checked = widget in enabled, onCheckedChange = { onToggle(widget, it) })
+                }
+            }
+        }
+    }
 }
 
 @Composable

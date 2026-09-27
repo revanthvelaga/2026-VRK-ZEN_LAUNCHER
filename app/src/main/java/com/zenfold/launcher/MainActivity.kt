@@ -12,17 +12,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
-import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.style.StylePreferences
+import com.zenfold.launcher.tasks.TaskPreferences
 import com.zenfold.launcher.ui.HomeScreen
-import com.zenfold.launcher.ui.SettingsScreen
 import com.zenfold.launcher.ui.theme.ZenFoldTheme
 import com.zenfold.launcher.widgets.WidgetType
 import kotlinx.coroutines.launch
@@ -30,6 +27,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val stylePreferences by lazy { StylePreferences(applicationContext) }
+    private val taskPreferences by lazy { TaskPreferences(applicationContext) }
 
     // Bumped each time the Home button is pressed while ZenFold is already in front.
     private var homeSignal by mutableIntStateOf(0)
@@ -50,15 +48,13 @@ class MainActivity : ComponentActivity() {
             val noteText by stylePreferences.noteText.collectAsState(initial = "")
             val recentPackages by stylePreferences.recentPackages.collectAsState(initial = emptyList())
             val homeLayout by stylePreferences.homeLayout.collectAsState(initial = emptyMap())
-            var showSettings by remember { mutableStateOf(false) }
+            val hiddenHomeApps by stylePreferences.hiddenHomeApps.collectAsState(initial = emptySet())
+            val tasks by taskPreferences.tasks.collectAsState(initial = emptyList())
             val scope = rememberCoroutineScope()
 
-            // A launcher has nothing "behind" it: Back on the home page does nothing.
-            // Registered first, so the Settings and drawer handlers below take priority.
+            // A launcher has nothing "behind" it: Back on the home page does nothing
+            // (HomeScreen's own BackHandlers for the drawer/widget picker take priority).
             BackHandler(enabled = true) {}
-            BackHandler(enabled = showSettings) { showSettings = false }
-
-            LaunchedEffect(homeSignal) { showSettings = false }
 
             LaunchedEffect(style.statusBarStyle) {
                 val insetsController = WindowCompat.getInsetsController(window, window.decorView)
@@ -66,35 +62,30 @@ class MainActivity : ComponentActivity() {
             }
 
             ZenFoldTheme(style = style) {
-                if (showSettings) {
-                    SettingsScreen(
-                        style = style,
-                        enabledWidgets = enabledWidgets,
-                        onApplyPreset = { preset: CustomStyle -> scope.launch { stylePreferences.applyPreset(preset) } },
-                        onChange = { next: CustomStyle -> scope.launch { stylePreferences.update { next } } },
-                        onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },
-                        onDone = { showSettings = false }
-                    )
-                } else {
-                    HomeScreen(
-                        apps = apps,
-                        style = style,
-                        enabledWidgets = enabledWidgets,
-                        recentPackages = recentPackages,
-                        homeLayout = homeLayout,
-                        noteText = noteText,
-                        homeSignal = homeSignal,
-                        onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
-                        onMoveApp = { pkg, pos -> scope.launch { stylePreferences.setHomePosition(pkg, pos) } },
-                        onLaunch = { app ->
-                            packageManager.getLaunchIntentForPackage(app.packageName)?.let {
-                                startActivity(it)
-                                scope.launch { stylePreferences.recordLaunch(app.packageName) }
-                            }
-                        },
-                        onOpenSettings = { showSettings = true }
-                    )
-                }
+                HomeScreen(
+                    apps = apps,
+                    style = style,
+                    enabledWidgets = enabledWidgets,
+                    recentPackages = recentPackages,
+                    homeLayout = homeLayout,
+                    hiddenHomeApps = hiddenHomeApps,
+                    noteText = noteText,
+                    tasks = tasks,
+                    homeSignal = homeSignal,
+                    onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
+                    onMoveApp = { pkg, pos -> scope.launch { stylePreferences.setHomePosition(pkg, pos) } },
+                    onHideFromHome = { pkg -> scope.launch { stylePreferences.setHiddenFromHome(pkg, true) } },
+                    onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },
+                    onAddTask = { text -> scope.launch { taskPreferences.add(text) } },
+                    onToggleTask = { id, done -> scope.launch { taskPreferences.setDone(id, done) } },
+                    onRemoveTask = { id -> scope.launch { taskPreferences.remove(id) } },
+                    onLaunch = { app ->
+                        packageManager.getLaunchIntentForPackage(app.packageName)?.let {
+                            startActivity(it)
+                            scope.launch { stylePreferences.recordLaunch(app.packageName) }
+                        }
+                    }
+                )
             }
         }
     }

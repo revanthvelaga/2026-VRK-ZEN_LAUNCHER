@@ -39,6 +39,7 @@ private object Keys {
     val NOTE_TEXT = stringPreferencesKey("note_text")
     val RECENTS = stringPreferencesKey("recents")
     val HOME_LAYOUT = stringPreferencesKey("home_layout")
+    val HIDDEN_HOME = stringPreferencesKey("hidden_home")
 }
 
 private const val MAX_RECENTS = 8
@@ -102,6 +103,7 @@ class StylePreferences(private val context: Context) {
     val noteText = context.launcherPrefs.data.map { it[Keys.NOTE_TEXT] ?: "" }
     val recentPackages = context.launcherPrefs.data.map { it.toRecentPackages() }
     val homeLayout = context.launcherPrefs.data.map { it.toHomeLayout() }
+    val hiddenHomeApps = context.launcherPrefs.data.map { it.toHiddenHomeApps() }
 
     suspend fun applyPreset(style: CustomStyle) {
         context.launcherPrefs.edit { prefs -> prefs.writeCustomStyle(style) }
@@ -141,10 +143,22 @@ class StylePreferences(private val context: Context) {
             prefs[Keys.HOME_LAYOUT] = next.entries.joinToString(",") { (pkg, p) -> "$pkg:${p.row}:${p.col}" }
         }
     }
+
+    /** "Remove from home" — the app stays installed and in the drawer, just off the grid. */
+    suspend fun setHiddenFromHome(packageName: String, hidden: Boolean) {
+        context.launcherPrefs.edit { prefs ->
+            val current = prefs.toHiddenHomeApps().toMutableSet()
+            if (hidden) current += packageName else current -= packageName
+            prefs[Keys.HIDDEN_HOME] = current.joinToString(",")
+        }
+    }
 }
 
 private fun Preferences.toRecentPackages(): List<String> =
     this[Keys.RECENTS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+
+private fun Preferences.toHiddenHomeApps(): Set<String> =
+    this[Keys.HIDDEN_HOME]?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
 
 private fun Preferences.toHomeLayout(): Map<String, GridPos> {
     val raw = this[Keys.HOME_LAYOUT] ?: return emptyMap()

@@ -89,7 +89,8 @@ object AppRepository {
         add(firstInstalled(listOf("com.android.vending")))
         add(firstInstalled(handlers(pm, Intent(Settings.ACTION_SETTINGS)) + "com.android.settings"))
         recentPackages.forEach { add(byPackage[it]) }
-        apps.forEach { add(it) }
+        // Deliberately stops here: the grid holds these defaults plus recents, not
+        // every installed app — GRID_SIZE just caps how many recents can fit.
 
         return HomeApps(dock = dock, grid = grid)
     }
