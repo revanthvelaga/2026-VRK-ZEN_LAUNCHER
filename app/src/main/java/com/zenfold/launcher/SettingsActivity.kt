@@ -7,8 +7,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import com.zenfold.launcher.feeds.FeedApiKeys
-import com.zenfold.launcher.feeds.FeedPreferences
 import com.zenfold.launcher.home.DEFAULT_GRID
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.StylePresets
@@ -25,7 +23,6 @@ import kotlinx.coroutines.launch
 class SettingsActivity : ComponentActivity() {
 
     private val stylePreferences by lazy { StylePreferences(applicationContext) }
-    private val feedPreferences by lazy { FeedPreferences(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,7 +31,6 @@ class SettingsActivity : ComponentActivity() {
         setContent {
             val style by stylePreferences.customStyle.collectAsState(initial = StylePresets.default)
             val enabledWidgets by stylePreferences.enabledWidgets.collectAsState(initial = setOf(WidgetType.GLANCE))
-            val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
             val apps = rememberInstalledApps()
             val hiddenPackages by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val gridSpec by stylePreferences.gridSpec.collectAsState(initial = DEFAULT_GRID)
@@ -45,7 +41,6 @@ class SettingsActivity : ComponentActivity() {
                 SettingsScreen(
                     style = style,
                     enabledWidgets = enabledWidgets,
-                    feedKeys = feedKeys,
                     hiddenApps = apps.filter { it.packageName in hiddenPackages },
                     onUnhideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, false) } },
                     gridSpec = gridSpec,
@@ -55,13 +50,6 @@ class SettingsActivity : ComponentActivity() {
                     onApplyPreset = { preset: CustomStyle -> scope.launch { stylePreferences.applyPreset(preset) } },
                     onChange = { next: CustomStyle -> scope.launch { stylePreferences.update { next } } },
                     onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },
-                    onFeedKeysChange = { next: FeedApiKeys ->
-                        scope.launch {
-                            feedPreferences.setGoldApiKey(next.goldApiKey)
-                            feedPreferences.setMarketApiKey(next.marketApiKey)
-                            feedPreferences.setCricketApiKey(next.cricketApiKey)
-                        }
-                    },
                     onDone = { finish() }
                 )
             }

@@ -86,7 +86,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.GridPos
 import com.zenfold.launcher.SettingsActivity
-import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.home.GridSpec
 import com.zenfold.launcher.home.HomeApp
 import com.zenfold.launcher.home.HomeFolder
@@ -137,7 +136,6 @@ fun HomeScreen(
     hostedWidgetIds: List<Int>,
     noteText: String,
     tasks: List<TaskItem>,
-    feedKeys: FeedApiKeys,
     homeSignal: Int,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
@@ -402,7 +400,6 @@ fun HomeScreen(
                         style = style,
                         hazeState = hazeState,
                         tasks = tasks,
-                        feedKeys = feedKeys,
                         onAddTask = onAddTask,
                         onToggleTask = onToggleTask,
                         onRemoveTask = onRemoveTask

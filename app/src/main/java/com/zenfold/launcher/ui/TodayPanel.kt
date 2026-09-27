@@ -1,9 +1,12 @@
 package com.zenfold.launcher.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.telephony.TelephonyManager
 import android.os.Environment
 import android.os.StatFs
 import android.provider.CalendarContract
@@ -61,18 +64,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.zenfold.launcher.SettingsActivity
 import com.zenfold.launcher.feeds.CricketMatch
-import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.feeds.GoldPrice
 import com.zenfold.launcher.feeds.MarketIndex
-import com.zenfold.launcher.feeds.fetchCricketMatches
+import com.zenfold.launcher.feeds.Trend
+import com.zenfold.launcher.feeds.fetchCricketScores
 import com.zenfold.launcher.feeds.fetchGoldPrice
 import com.zenfold.launcher.feeds.fetchSensex
+import com.zenfold.launcher.feeds.fetchTrends
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.tasks.TaskItem
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -88,22 +94,22 @@ private val Positive = Color(0xFF34C759)
 private val Negative = Color(0xFFFF453A)
 private val LiveRed = Color(0xFFE5484D)
 
-// The "-1" page to the left of Home: a greeting, quick stats, the cricket scoreboard, a real
-// month calendar, tasks, and sample tweets. Market and cricket data only appear once the user
-// adds their own API keys (Settings → Feeds); until then each spot shows a tidy "Set up"
-// prompt rather than fake numbers. No "Mail" section: a real inbox needs Gmail/OAuth
-// integration, a separate project from anything a launcher can do on its own.
+// The "-1" page to the left of Home: a greeting, live market tiles, a cricket scoreboard,
+// a real month calendar, tasks, and what's trending — all live, from public keyless feeds
+// (feeds/FeedApi.kt), so there's nothing to set up. No "Mail" section: a real inbox needs
+// Gmail/OAuth integration, a separate project from anything a launcher can do on its own.
 @Composable
 fun TodayPanel(
     style: CustomStyle,
     hazeState: HazeState,
     tasks: List<TaskItem>,
-    feedKeys: FeedApiKeys,
     onAddTask: (String) -> Unit,
     onToggleTask: (String, Boolean) -> Unit,
     onRemoveTask: (String) -> Unit
 ) {
-    val feeds = rememberFeeds(feedKeys)
+    val context = LocalContext.current
+    val country = remember { deviceCountry(context) }
+    val feeds = rememberFeeds(country)
 
     Column(
         Modifier
@@ -116,11 +122,11 @@ fun TodayPanel(
     ) {
         Spacer(Modifier.height(10.dp))
         Greeting(style)
-        StatTiles(style, hazeState, feedKeys, feeds)
-        ScoreboardCard(style, hazeState, feedKeys, feeds)
+        StatTiles(style, hazeState, feeds)
+        ScoreboardCard(style, hazeState, feeds)
         CalendarCard(style, hazeState)
         TasksCard(style, hazeState, tasks, onAddTask, onToggleTask, onRemoveTask)
-        TweetsCard(style, hazeState)
+        TrendingCard(style, hazeState, feeds, country)
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -132,8 +138,22 @@ private fun Modifier.card(hazeState: HazeState) = this
     .glass(hazeState, cardShape)
     .padding(18.dp)
 
-private fun openFeedSettings(context: Context) {
-    context.startActivity(Intent(context, SettingsActivity::class.java))
+private fun openUrl(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: ActivityNotFoundException) {
+        // No browser installed: nothing sensible to open it in.
+    }
+}
+
+// The network's country first (what the phone is actually in), then the SIM's, then the
+// language setting — plenty of phones in India run en-US.
+private fun deviceCountry(context: Context): String {
+    val telephony = context.getSystemService(TelephonyManager::class.java)
+    return listOfNotNull(telephony?.networkCountryIso, telephony?.simCountryIso, Locale.getDefault().country)
+        .firstOrNull { it.length == 2 }
+        ?.uppercase(Locale.ROOT)
+        ?: "IN"
 }
 
 @Composable
@@ -168,21 +188,48 @@ private class FeedState(
     val gold: GoldPrice?,
     val sensex: MarketIndex?,
     val cricket: List<CricketMatch>?,
+    val trends: List<Trend>?,
     val loaded: Boolean
-)
+) {
+    companion object {
+        val EMPTY = FeedState(null, null, null, null, loaded = false)
+    }
+}
 
+// Survives leaving and re-entering the page, so it shows the last data instantly while
+// refreshing instead of flashing "Loading".
+private object FeedCache {
+    var last: FeedState = FeedState.EMPTY
+}
+
+private const val REFRESH_MILLIS = 2 * 60 * 1000L
+
+/** Fetches every feed in parallel, then again every two minutes while this page is on screen. */
 @Composable
-private fun rememberFeeds(keys: FeedApiKeys): FeedState {
-    var state by remember { mutableStateOf(FeedState(null, null, null, loaded = false)) }
-    LaunchedEffect(keys) {
-        state = FeedState(null, null, null, loaded = false)
-        state = withContext(Dispatchers.IO) {
-            FeedState(
-                gold = keys.goldApiKey.takeIf { it.isNotBlank() }?.let { fetchGoldPrice(it) },
-                sensex = keys.marketApiKey.takeIf { it.isNotBlank() }?.let { fetchSensex(it) },
-                cricket = keys.cricketApiKey.takeIf { it.isNotBlank() }?.let { fetchCricketMatches(it) },
-                loaded = true
-            )
+private fun rememberFeeds(country: String): FeedState {
+    var state by remember { mutableStateOf(FeedCache.last) }
+    LaunchedEffect(country) {
+        while (true) {
+            val previous = state
+            val fresh = withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val gold = async { fetchGoldPrice() }
+                    val sensex = async { fetchSensex() }
+                    val cricket = async { fetchCricketScores() }
+                    val trends = async { fetchTrends(country) }
+                    // A feed that fails this round keeps its last good value.
+                    FeedState(
+                        gold = gold.await() ?: previous.gold,
+                        sensex = sensex.await() ?: previous.sensex,
+                        cricket = cricket.await() ?: previous.cricket,
+                        trends = trends.await() ?: previous.trends,
+                        loaded = true
+                    )
+                }
+            }
+            state = fresh
+            FeedCache.last = fresh
+            delay(REFRESH_MILLIS)
         }
     }
     return state
@@ -190,8 +237,10 @@ private fun rememberFeeds(keys: FeedApiKeys): FeedState {
 
 // ---------------------------------------------------------------- Stat tiles
 
+private fun changeColor(percent: Double?): Color = if ((percent ?: 0.0) >= 0) Positive else Negative
+
 @Composable
-private fun StatTiles(style: CustomStyle, hazeState: HazeState, keys: FeedApiKeys, feeds: FeedState) {
+private fun StatTiles(style: CustomStyle, hazeState: HazeState, feeds: FeedState) {
     val context = LocalContext.current
     val storage = remember {
         val stat = StatFs(Environment.getDataDirectory().path)
@@ -199,26 +248,24 @@ private fun StatTiles(style: CustomStyle, hazeState: HazeState, keys: FeedApiKey
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         StatTile(
-            label = "Gold 24k",
+            label = "Gold / g",
             value = feeds.gold?.let { "₹%,.0f".format(it.pricePerGram) },
-            detail = if (feeds.gold != null) "per gram" else null,
-            detailColor = style.onSurfaceVariant,
-            needsSetup = keys.goldApiKey.isBlank(),
+            detail = feeds.gold?.let { "%+.2f%%".format(it.changePercent) },
+            detailColor = changeColor(feeds.gold?.changePercent),
             loading = !feeds.loaded,
             style = style,
             hazeState = hazeState,
-            onSetup = { openFeedSettings(context) }
+            onClick = { openUrl(context, "https://www.google.com/search?q=gold+price+today") }
         )
         StatTile(
             label = "Sensex",
             value = feeds.sensex?.let { "%,.0f".format(it.value) },
             detail = feeds.sensex?.let { "%+.2f%%".format(it.changePercent) },
-            detailColor = if ((feeds.sensex?.changePercent ?: 0.0) >= 0) Positive else Negative,
-            needsSetup = keys.marketApiKey.isBlank(),
+            detailColor = changeColor(feeds.sensex?.changePercent),
             loading = !feeds.loaded,
             style = style,
             hazeState = hazeState,
-            onSetup = { openFeedSettings(context) }
+            onClick = { openUrl(context, "https://www.google.com/search?q=sensex") }
         )
         val (total, used) = storage
         StatTile(
@@ -226,7 +273,6 @@ private fun StatTiles(style: CustomStyle, hazeState: HazeState, keys: FeedApiKey
             value = if (total > 0) "${used * 100 / total}%" else null,
             detail = "%.0f of %.0f GB".format(used / 1e9, total / 1e9),
             detailColor = style.onSurfaceVariant,
-            needsSetup = false,
             loading = false,
             style = style,
             hazeState = hazeState,
@@ -241,62 +287,57 @@ private fun RowScope.StatTile(
     value: String?,
     detail: String?,
     detailColor: Color,
-    needsSetup: Boolean,
     loading: Boolean,
     style: CustomStyle,
     hazeState: HazeState,
-    onSetup: () -> Unit = {},
-    onClick: (() -> Unit)? = null
+    onClick: () -> Unit
 ) {
     Column(
         Modifier
             .weight(1f)
             .glass(hazeState, RoundedCornerShape(20.dp))
-            .clickable(enabled = needsSetup || onClick != null) { if (needsSetup) onSetup() else onClick?.invoke() }
+            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 14.dp)
     ) {
         CardTitle(label, style)
         Spacer(Modifier.height(8.dp))
-        when {
-            needsSetup -> {
-                Text("—", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = style.onSurfaceVariant)
-                Text("Set up", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = style.accent)
-            }
-            value != null -> {
-                Text(value, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = style.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                detail?.let { Text(it, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = detailColor, maxLines = 1) }
-            }
-            else -> {
-                Text("…", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = style.onSurfaceVariant)
-                Text(if (loading) "Loading" else "Unavailable", fontSize = 12.sp, color = style.onSurfaceVariant)
-            }
+        if (value != null) {
+            Text(value, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = style.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            detail?.let { Text(it, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = detailColor, maxLines = 1) }
+        } else {
+            Text("…", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = style.onSurfaceVariant)
+            Text(if (loading) "Loading" else "Offline", fontSize = 12.sp, color = style.onSurfaceVariant)
         }
     }
 }
 
 // ---------------------------------------------------------------- Cricket scoreboard
 
+private const val COLLAPSED_MATCHES = 3
+
 @Composable
-private fun ScoreboardCard(style: CustomStyle, hazeState: HazeState, keys: FeedApiKeys, feeds: FeedState) {
-    val context = LocalContext.current
+private fun ScoreboardCard(style: CustomStyle, hazeState: HazeState, feeds: FeedState) {
+    var expanded by remember { mutableStateOf(false) }
     Column(Modifier.card(hazeState)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.SportsCricket, contentDescription = null, tint = style.accent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            CardTitle("Cricket", style)
+            CardTitle("Cricket", style, Modifier.weight(1f))
+            Text("ESPNcricinfo", fontSize = 10.sp, color = style.onSurfaceVariant)
         }
         Spacer(Modifier.height(12.dp))
         val matches = feeds.cricket
         when {
-            keys.cricketApiKey.isBlank() -> SetupPrompt(
-                "Live scores appear here once you add a free CricAPI key.",
-                style
-            ) { openFeedSettings(context) }
-            !feeds.loaded -> Text("Loading scores…", fontSize = 13.sp, color = style.onSurfaceVariant)
-            matches == null -> Text("Couldn't reach CricAPI — check your key in Settings.", fontSize = 13.sp, color = style.onSurfaceVariant)
+            matches == null && !feeds.loaded -> Text("Loading scores…", fontSize = 13.sp, color = style.onSurfaceVariant)
+            matches == null -> Text("Scores are offline right now — they'll refresh automatically.", fontSize = 13.sp, color = style.onSurfaceVariant)
             matches.isEmpty() -> Text("No matches on right now", fontSize = 13.sp, color = style.onSurfaceVariant)
-            else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                matches.forEach { match -> MatchScore(match, style) }
+            else -> {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    matches.take(if (expanded) matches.size else COLLAPSED_MATCHES).forEach { match -> MatchScore(match, style) }
+                }
+                if (matches.size > COLLAPSED_MATCHES) {
+                    ShowMoreToggle(expanded, matches.size, style) { expanded = !expanded }
+                }
             }
         }
     }
@@ -304,74 +345,88 @@ private fun ScoreboardCard(style: CustomStyle, hazeState: HazeState, keys: FeedA
 
 @Composable
 private fun MatchScore(match: CricketMatch, style: CustomStyle) {
-    Column(
+    val context = LocalContext.current
+    Row(
         Modifier
             .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
-            .padding(12.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .clickable(enabled = match.url != null) { match.url?.let { openUrl(context, it) } }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (match.live) {
-                Text(
-                    "LIVE",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier
-                        .background(LiveRed, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
-                Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            match.teams.forEach { team ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // A small dot marks the side batting right now.
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .background(if (team.batting) style.accent else Color.Transparent, CircleShape)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        team.team,
+                        fontSize = 15.sp,
+                        fontWeight = if (team.batting) FontWeight.Bold else FontWeight.SemiBold,
+                        color = style.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        team.score ?: "Yet to bat",
+                        fontSize = if (team.score != null) 15.sp else 12.sp,
+                        fontWeight = if (team.score != null) FontWeight.Bold else FontWeight.Normal,
+                        color = if (team.score != null) style.onBackground else style.onSurfaceVariant
+                    )
+                }
             }
+        }
+        if (match.live) {
+            Spacer(Modifier.width(10.dp))
             Text(
-                listOf(match.matchType, match.name).filter { it.isNotBlank() }.joinToString(" · "),
-                fontSize = 11.sp,
-                color = style.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                "LIVE",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier
+                    .background(LiveRed, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             )
-        }
-        Spacer(Modifier.height(8.dp))
-        match.teams.forEach { team ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    team.team,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = style.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    team.score ?: "Yet to bat",
-                    fontSize = if (team.score != null) 15.sp else 12.sp,
-                    fontWeight = if (team.score != null) FontWeight.Bold else FontWeight.Normal,
-                    color = if (team.score != null) style.onBackground else style.onSurfaceVariant
-                )
-            }
-        }
-        if (match.status.isNotBlank()) {
-            Spacer(Modifier.height(6.dp))
-            Text(match.status, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = style.accent, maxLines = 2)
         }
     }
 }
 
 @Composable
-private fun SetupPrompt(text: String, style: CustomStyle, onSetup: () -> Unit) {
+private fun ShowMoreToggle(expanded: Boolean, total: Int, style: CustomStyle, onToggle: () -> Unit) {
+    Spacer(Modifier.height(8.dp))
+    Text(
+        if (expanded) "Show less" else "Show all $total",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = style.accent,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onToggle)
+            .padding(vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun PermissionPrompt(text: String, style: CustomStyle, onAllow: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(text, fontSize = 13.sp, color = style.onSurfaceVariant, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(12.dp))
         Text(
-            "Set up",
+            "Allow",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             color = style.background,
             modifier = Modifier
                 .clip(RoundedCornerShape(14.dp))
                 .background(style.accent)
-                .clickable(onClick = onSetup)
+                .clickable(onClick = onAllow)
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         )
     }
@@ -543,7 +598,7 @@ private fun CalendarCard(style: CustomStyle, hazeState: HazeState) {
         if (!granted) {
             CardTitle("Calendar", style)
             Spacer(Modifier.height(12.dp))
-            SetupPrompt("See your month and upcoming events here.", style) {
+            PermissionPrompt("See your month and upcoming events here.", style) {
                 permissionLauncher.launch(Manifest.permission.READ_CALENDAR)
             }
             return@Column
@@ -675,87 +730,77 @@ private fun DayCell(date: LocalDate, inMonth: Boolean, selected: Boolean, hasEve
     }
 }
 
-// ---------------------------------------------------------------- Tweets
+// ---------------------------------------------------------------- Trending
 
-// X (Twitter) pulled its free trends/search access years ago — the cheapest tier that
-// still includes it is a paid developer plan (~$100+/month), with no free or legitimate
-// scraping path. So this shows clearly-labelled sample content in the shape real tweets
-// would take; swap dummyTweets for a real API response here (and only here) once paid
-// access exists.
-private data class MockTweet(val name: String, val handle: String, val text: String, val timeAgo: String)
-
-private val dummyTweets = listOf(
-    MockTweet("MoneyControl", "@moneycontrol", "Sensex opens 340 pts higher, Nifty above 24,900 as gold also rallies to a fresh high #Sensex #GoldPrice", "12m"),
-    MockTweet("ESPNcricinfo", "@ESPNcricinfo", "WICKET! Bumrah strikes again — India need 3 more to wrap up the innings #INDvAUS", "24m"),
-    MockTweet("Bloomberg", "@Bloomberg", "Gold extends rally past \$2,650/oz as investors seek safe havens amid rate-cut bets #GoldPrice", "41m"),
-    MockTweet("IPL", "@IPL", "Squads announced for the 2026 mega auction — full list of retained players inside #IPL2026", "1h"),
-    MockTweet("CNBC-TV18", "@CNBCTV18Live", "Sensex, Nifty extend gains for 4th straight session; IT and banking stocks lead #Sensex", "1h"),
-    MockTweet("BBC Sport", "@BBCSport", "Full scorecard and highlights from today's thrilling run chase #Cricket", "2h"),
-    MockTweet("Reuters", "@Reuters", "Gold prices set for best week in two months on softer dollar #GoldPrice", "2h"),
-    MockTweet("ANI", "@ANI", "Union Budget 2026 session dates announced by the Finance Ministry #Budget2026", "3h"),
-    MockTweet("Variety", "@Variety", "Trailer for the year's biggest Bollywood release crosses 50M views in 24 hours #Bollywood", "4h"),
-    MockTweet("The Weather Channel", "@weatherchannel", "Climate summit negotiators reach draft agreement on emissions targets #ClimateSummit", "5h")
-)
-
-private const val COLLAPSED_TWEETS = 3
+// What people are searching for right now, from Google Trends — the live, no-setup stand-in
+// for "trending on X", which has no free or legitimate keyless feed.
+private const val COLLAPSED_TRENDS = 5
 
 @Composable
-private fun TweetsCard(style: CustomStyle, hazeState: HazeState) {
+private fun TrendingCard(style: CustomStyle, hazeState: HazeState, feeds: FeedState, country: String) {
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
+    val place = remember(country) { Locale("", country).displayCountry.ifBlank { country } }
     Column(Modifier.card(hazeState)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CardTitle("Top tweets", style, Modifier.weight(1f))
-            Text(
-                "SAMPLE",
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = style.onSurfaceVariant,
-                modifier = Modifier
-                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            )
+            CardTitle("Trending in $place", style, Modifier.weight(1f))
+            Text("Google Trends", fontSize = 10.sp, color = style.onSurfaceVariant)
         }
-        Spacer(Modifier.height(14.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            dummyTweets.take(if (expanded) dummyTweets.size else COLLAPSED_TWEETS).forEach { tweet ->
-                Row {
-                    Box(
-                        Modifier
-                            .size(34.dp)
-                            .background(style.accent.copy(alpha = 0.22f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(tweet.name.first().toString(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = style.accent)
+        Spacer(Modifier.height(12.dp))
+        val trends = feeds.trends
+        when {
+            trends == null && !feeds.loaded -> Text("Loading…", fontSize = 13.sp, color = style.onSurfaceVariant)
+            trends.isNullOrEmpty() -> Text("Trends are offline right now — they'll refresh automatically.", fontSize = 13.sp, color = style.onSurfaceVariant)
+            else -> {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    trends.take(if (expanded) trends.size else COLLAPSED_TRENDS).forEachIndexed { index, trend ->
+                        TrendRow(index + 1, trend, style) { openUrl(context, trend.url) }
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tweet.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = style.onBackground, maxLines = 1)
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "${tweet.handle} · ${tweet.timeAgo}",
-                                fontSize = 12.sp,
-                                color = style.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text(tweet.text, fontSize = 13.sp, color = style.onBackground, lineHeight = 18.sp)
-                    }
+                }
+                if (trends.size > COLLAPSED_TRENDS) {
+                    ShowMoreToggle(expanded, trends.size, style) { expanded = !expanded }
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
+    }
+}
+
+@Composable
+private fun TrendRow(rank: Int, trend: Trend, style: CustomStyle, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.Top
+    ) {
         Text(
-            if (expanded) "Show less" else "Show all ${dummyTweets.size}",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            "$rank",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
             color = style.accent,
-            modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 6.dp)
+            modifier = Modifier.width(26.dp)
         )
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    trend.title.replaceFirstChar { it.titlecase(Locale.getDefault()) },
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = style.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                trend.traffic?.let {
+                    Spacer(Modifier.width(8.dp))
+                    Text("$it searches", fontSize = 11.sp, color = style.onSurfaceVariant, maxLines = 1)
+                }
+            }
+            trend.headline?.let {
+                Text(it, fontSize = 12.sp, color = style.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp)
+            }
+        }
     }
 }

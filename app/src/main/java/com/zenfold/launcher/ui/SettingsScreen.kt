@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
@@ -41,11 +40,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.notifications.ZenFoldNotificationListener
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.home.GridSpec
 import com.zenfold.launcher.icons.installedIconPacks
 import com.zenfold.launcher.system.LockScreenService
@@ -65,7 +61,6 @@ import dev.chrisbanes.haze.HazeState
 fun SettingsScreen(
     style: CustomStyle,
     enabledWidgets: Set<WidgetType>,
-    feedKeys: FeedApiKeys,
     hiddenApps: List<AppEntry>,
     onUnhideApp: (String) -> Unit,
     gridSpec: GridSpec,
@@ -75,7 +70,6 @@ fun SettingsScreen(
     onApplyPreset: (CustomStyle) -> Unit,
     onChange: (CustomStyle) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
-    onFeedKeysChange: (FeedApiKeys) -> Unit,
     onDone: () -> Unit
 ) {
     val hazeState = remember { HazeState() }
@@ -279,27 +273,6 @@ fun SettingsScreen(
                 }
             }
 
-            item {
-                SettingsSection(style, "Feeds") {
-                    Text(
-                        "Optional — add your own free API keys to show live gold, Sensex and " +
-                            "cricket data on the Today panel. Trending X topics can't be made " +
-                            "live without a paid X developer plan, so that card stays a preview.",
-                        fontSize = 12.sp,
-                        color = style.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    ApiKeyField(style, "Gold price — goldapi.io", feedKeys.goldApiKey) {
-                        onFeedKeysChange(feedKeys.copy(goldApiKey = it))
-                    }
-                    ApiKeyField(style, "Sensex — twelvedata.com", feedKeys.marketApiKey) {
-                        onFeedKeysChange(feedKeys.copy(marketApiKey = it))
-                    }
-                    ApiKeyField(style, "Cricket scores — cricapi.com", feedKeys.cricketApiKey) {
-                        onFeedKeysChange(feedKeys.copy(cricketApiKey = it))
-                    }
-                }
-            }
         }
     }
 }
@@ -352,33 +325,6 @@ private fun ChoiceRow(style: CustomStyle, label: String, selected: Boolean, onCl
     ) {
         Text(label, fontSize = 14.sp, color = style.onBackground, modifier = Modifier.weight(1f))
         if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = style.accent)
-    }
-}
-
-@Composable
-private fun ApiKeyField(style: CustomStyle, label: String, value: String, onValueChange: (String) -> Unit) {
-    Column(Modifier.padding(vertical = 4.dp)) {
-        Text(label, fontSize = 13.sp, color = style.onBackground)
-        Spacer(Modifier.height(4.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(style.surface.copy(alpha = 0.5f))
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-        ) {
-            if (value.isEmpty()) {
-                Text("Paste API key…", fontSize = 13.sp, color = style.onSurfaceVariant)
-            }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp, color = style.onBackground),
-                cursorBrush = SolidColor(style.accent),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
     }
 }
 

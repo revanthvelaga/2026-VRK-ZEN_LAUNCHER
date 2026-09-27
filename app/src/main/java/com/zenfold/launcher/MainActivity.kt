@@ -21,8 +21,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
-import com.zenfold.launcher.feeds.FeedApiKeys
-import com.zenfold.launcher.feeds.FeedPreferences
 import com.zenfold.launcher.home.DEFAULT_GRID
 import com.zenfold.launcher.home.HomeLayout
 import com.zenfold.launcher.style.StatusBarStyle
@@ -43,7 +41,6 @@ class MainActivity : ComponentActivity() {
 
     private val stylePreferences by lazy { StylePreferences(applicationContext) }
     private val taskPreferences by lazy { TaskPreferences(applicationContext) }
-    private val feedPreferences by lazy { FeedPreferences(applicationContext) }
     private val appWidgetHost by lazy { AppWidgetHost(applicationContext, APPWIDGET_HOST_ID) }
     private val appWidgetManager by lazy { AppWidgetManager.getInstance(applicationContext) }
 
@@ -79,7 +76,6 @@ class MainActivity : ComponentActivity() {
             val hiddenApps by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val hostedWidgets by stylePreferences.hostedWidgets.collectAsState(initial = emptyList())
             val tasks by taskPreferences.tasks.collectAsState(initial = emptyList())
-            val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
             val scope = rememberCoroutineScope()
 
             // One-time: the default Home and dock on a fresh install, or the older layout carried over.
@@ -117,7 +113,6 @@ class MainActivity : ComponentActivity() {
                     hostedWidgetIds = hostedWidgets,
                     noteText = noteText,
                     tasks = tasks,
-                    feedKeys = feedKeys,
                     homeSignal = homeSignal,
                     onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
                     onHomeEdit = { transform -> scope.launch { stylePreferences.editHomeItems(transform) } },
