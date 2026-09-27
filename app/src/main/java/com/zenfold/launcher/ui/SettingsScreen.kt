@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -46,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.home.GridSpec
+import com.zenfold.launcher.icons.installedIconPacks
+import com.zenfold.launcher.system.LockScreenService
 import com.zenfold.launcher.style.AccentSwatches
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.FontScale
@@ -67,6 +70,8 @@ fun SettingsScreen(
     onUnhideApp: (String) -> Unit,
     gridSpec: GridSpec,
     onGridSpecChange: (GridSpec) -> Unit,
+    iconPack: String?,
+    onIconPackChange: (String?) -> Unit,
     onApplyPreset: (CustomStyle) -> Unit,
     onChange: (CustomStyle) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
@@ -211,8 +216,46 @@ fun SettingsScreen(
             }
 
             item {
+                SettingsSection(style, "Icon pack") {
+                    val context = LocalContext.current
+                    val packs = remember { installedIconPacks(context) }
+                    ChoiceRow(style, "App icons (default)", selected = iconPack == null) { onIconPackChange(null) }
+                    packs.forEach { pack ->
+                        ChoiceRow(style, pack.label, selected = iconPack == pack.packageName) { onIconPackChange(pack.packageName) }
+                    }
+                    Text(
+                        if (packs.isEmpty()) {
+                            "No icon packs installed. Get one from the Play Store — search “icon pack”."
+                        } else {
+                            "Pack icons replace crystal tiles for the apps the pack covers."
+                        },
+                        fontSize = 12.sp,
+                        color = style.onSurfaceVariant
+                    )
+                }
+            }
+
+            item {
+                SettingsSection(style, "Double-tap to lock") {
+                    SystemAccessRow(
+                        style,
+                        onText = "On — double-tap an empty spot on Home to turn the screen off",
+                        offText = "Off — needs ZenFold's accessibility switch",
+                        isEnabled = { LockScreenService.isEnabled(it) },
+                        openSystemSettings = { LockScreenService.openSettings(it) }
+                    )
+                }
+            }
+
+            item {
                 SettingsSection(style, "Notification dots") {
-                    NotificationDotsRow(style)
+                    SystemAccessRow(
+                        style,
+                        onText = "On — apps with unread notifications show a dot",
+                        offText = "Off — needs notification access",
+                        isEnabled = { ZenFoldNotificationListener.isEnabled(it) },
+                        openSystemSettings = { ZenFoldNotificationListener.openSettings(it) }
+                    )
                 }
             }
 
@@ -261,17 +304,24 @@ fun SettingsScreen(
     }
 }
 
-// Dots come from the same notification access the Notifications widget uses, which Android
-// only lets the user grant by hand — so show whether it's on, re-checked on every return here.
+// For features that need a permission Android only lets the user grant by hand in system
+// Settings (notification access, accessibility): shows whether it's on, re-checked every
+// time the user comes back here, with a button to the right system screen.
 @Composable
-private fun NotificationDotsRow(style: CustomStyle) {
+private fun SystemAccessRow(
+    style: CustomStyle,
+    onText: String,
+    offText: String,
+    isEnabled: (Context) -> Boolean,
+    openSystemSettings: (Context) -> Unit
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var enabled by remember { mutableStateOf(ZenFoldNotificationListener.isEnabled(context)) }
+    var enabled by remember { mutableStateOf(isEnabled(context)) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) enabled = ZenFoldNotificationListener.isEnabled(context)
+            if (event == Lifecycle.Event.ON_RESUME) enabled = isEnabled(context)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -279,14 +329,29 @@ private fun NotificationDotsRow(style: CustomStyle) {
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            if (enabled) "On — apps with unread notifications show a dot" else "Off — needs notification access",
+            if (enabled) onText else offText,
             fontSize = 14.sp,
             color = style.onBackground,
             modifier = Modifier.weight(1f)
         )
         if (!enabled) {
-            TextButton(onClick = { ZenFoldNotificationListener.openSettings(context) }) { Text("Allow") }
+            TextButton(onClick = { openSystemSettings(context) }) { Text("Turn on") }
         }
+    }
+}
+
+@Composable
+private fun ChoiceRow(style: CustomStyle, label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 14.sp, color = style.onBackground, modifier = Modifier.weight(1f))
+        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = style.accent)
     }
 }
 

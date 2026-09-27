@@ -1,5 +1,6 @@
 package com.zenfold.launcher
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,6 +10,7 @@ import android.provider.AlarmClock
 import android.provider.MediaStore
 import android.provider.Settings
 import android.provider.Telephony
+import com.zenfold.launcher.icons.IconPack
 
 /**
  * One installed, launchable app.
@@ -29,19 +31,21 @@ object AppRepository {
 
     /**
      * Queries every activity that responds to ACTION_MAIN / CATEGORY_LAUNCHER —
-     * i.e. every app that shows up in a normal app drawer — sorted by label.
+     * i.e. every app that shows up in a normal app drawer — sorted by label. With an
+     * [iconPack], its icon replaces the app's own wherever the pack has one.
      */
-    fun installedApps(context: Context): List<AppEntry> {
+    fun installedApps(context: Context, iconPack: IconPack? = null): List<AppEntry> {
         val pm = context.packageManager
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
 
         return pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
             .asSequence()
             .map { resolveInfo ->
+                val activity = resolveInfo.activityInfo
                 AppEntry(
                     label = resolveInfo.loadLabel(pm).toString(),
-                    packageName = resolveInfo.activityInfo.packageName,
-                    icon = resolveInfo.loadIcon(pm)
+                    packageName = activity.packageName,
+                    icon = iconPack?.iconFor(ComponentName(activity.packageName, activity.name)) ?: resolveInfo.loadIcon(pm)
                 )
             }
             .distinctBy { it.packageName }

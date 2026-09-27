@@ -1,6 +1,8 @@
 package com.zenfold.launcher.ui
 
 import android.annotation.SuppressLint
+import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
@@ -93,7 +95,9 @@ import com.zenfold.launcher.home.HomeLayout
 import com.zenfold.launcher.notifications.ZenFoldNotificationListener
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.MAX_DOCK_APPS
+import com.zenfold.launcher.system.LockScreenService
 import com.zenfold.launcher.tasks.TaskItem
+import com.zenfold.launcher.widgets.HostedWidget
 import com.zenfold.launcher.widgets.WidgetArea
 import com.zenfold.launcher.widgets.WidgetPickerOverlay
 import com.zenfold.launcher.widgets.WidgetType
@@ -129,6 +133,8 @@ fun HomeScreen(
     gridSpec: GridSpec,
     dockPackages: List<String>,
     hiddenApps: Set<String>,
+    appWidgetHost: AppWidgetHost,
+    hostedWidgetIds: List<Int>,
     noteText: String,
     tasks: List<TaskItem>,
     feedKeys: FeedApiKeys,
@@ -139,6 +145,8 @@ fun HomeScreen(
     onDockEdit: ((List<String>) -> List<String>) -> Unit,
     onHideApp: (String) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
+    onAddAndroidWidget: (AppWidgetProviderInfo) -> Unit,
+    onRemoveAndroidWidget: (Int) -> Unit,
     onAddTask: (String) -> Unit,
     onToggleTask: (String, Boolean) -> Unit,
     onRemoveTask: (String) -> Unit
@@ -436,7 +444,16 @@ fun HomeScreen(
                                     alpha = homeContentAlpha * ((enter - 0.88f) / 0.12f).coerceIn(0.3f, 1f)
                                 }
                                 .nestedScroll(homeSwipes)
-                                .pointerInput(Unit) { detectTapGestures(onLongPress = { homeMenuOpen = true }) }
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onLongPress = { homeMenuOpen = true },
+                                        onDoubleTap = {
+                                            if (!LockScreenService.lockScreen()) {
+                                                toast("Turn on “Double-tap to lock” in ZenFold Settings")
+                                            }
+                                        }
+                                    )
+                                }
                                 .statusBarsPadding()
                                 .navigationBarsPadding()
                                 .padding(horizontal = 20.dp)
@@ -461,6 +478,9 @@ fun HomeScreen(
                                         onNoteChange = onNoteChange,
                                         onLaunch = onLaunch
                                     )
+                                    hostedWidgetIds.forEach { id ->
+                                        key(id) { HostedWidget(appWidgetHost, id) }
+                                    }
                                 }
                                 HomeGrid(
                                     page = homePage,
@@ -584,6 +604,12 @@ fun HomeScreen(
                 hazeState = hazeState,
                 enabled = enabledWidgets,
                 onToggle = onWidgetToggle,
+                hostedWidgetIds = hostedWidgetIds,
+                onAddAndroidWidget = { provider ->
+                    widgetPickerOpen = false
+                    onAddAndroidWidget(provider)
+                },
+                onRemoveAndroidWidget = onRemoveAndroidWidget,
                 onDismiss = { widgetPickerOpen = false }
             )
         }

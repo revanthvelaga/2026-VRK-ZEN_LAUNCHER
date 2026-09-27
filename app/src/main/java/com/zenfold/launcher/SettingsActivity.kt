@@ -38,6 +38,7 @@ class SettingsActivity : ComponentActivity() {
             val apps = rememberInstalledApps()
             val hiddenPackages by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val gridSpec by stylePreferences.gridSpec.collectAsState(initial = DEFAULT_GRID)
+            val iconPack by stylePreferences.iconPack.collectAsState(initial = null)
             val scope = rememberCoroutineScope()
 
             ZenFoldTheme(style = style) {
@@ -49,6 +50,8 @@ class SettingsActivity : ComponentActivity() {
                     onUnhideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, false) } },
                     gridSpec = gridSpec,
                     onGridSpecChange = { spec -> scope.launch { stylePreferences.setGridSpec(spec) } },
+                    iconPack = iconPack,
+                    onIconPackChange = { pkg -> scope.launch { stylePreferences.setIconPack(pkg) } },
                     onApplyPreset = { preset: CustomStyle -> scope.launch { stylePreferences.applyPreset(preset) } },
                     onChange = { next: CustomStyle -> scope.launch { stylePreferences.update { next } } },
                     onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },

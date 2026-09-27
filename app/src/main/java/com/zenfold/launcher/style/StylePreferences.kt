@@ -50,6 +50,8 @@ private object Keys {
     val GRID_COLUMNS = intPreferencesKey("grid_columns")
     val GRID_ROWS = intPreferencesKey("grid_rows")
     val DOCK = stringPreferencesKey("dock")
+    val ICON_PACK = stringPreferencesKey("icon_pack")
+    val HOSTED_WIDGETS = stringPreferencesKey("hosted_widgets")
 }
 
 const val MAX_DOCK_APPS = 5
@@ -123,6 +125,26 @@ class StylePreferences(private val context: Context) {
         )
     }
     val dockPackages = context.launcherPrefs.data.map { prefs -> prefs.toPackageList(Keys.DOCK) }
+    /** Package of the chosen icon pack, or null for the apps' own icons. */
+    val iconPack = context.launcherPrefs.data.map { prefs -> prefs[Keys.ICON_PACK]?.takeIf { it.isNotBlank() } }
+    /** Other apps' widgets placed on Home, as AppWidgetHost ids, top to bottom. */
+    val hostedWidgets = context.launcherPrefs.data.map { prefs -> prefs.toWidgetIds() }
+
+    suspend fun setIconPack(packageName: String?) {
+        context.launcherPrefs.edit { prefs -> prefs[Keys.ICON_PACK] = packageName.orEmpty() }
+    }
+
+    suspend fun addHostedWidget(appWidgetId: Int) {
+        context.launcherPrefs.edit { prefs ->
+            prefs[Keys.HOSTED_WIDGETS] = (prefs.toWidgetIds() + appWidgetId).distinct().joinToString(",")
+        }
+    }
+
+    suspend fun removeHostedWidget(appWidgetId: Int) {
+        context.launcherPrefs.edit { prefs ->
+            prefs[Keys.HOSTED_WIDGETS] = (prefs.toWidgetIds() - appWidgetId).joinToString(",")
+        }
+    }
 
     suspend fun setGridSpec(spec: GridSpec) {
         context.launcherPrefs.edit { prefs ->
@@ -219,6 +241,9 @@ private fun Preferences.toRecentPackages(): List<String> =
     this[Keys.RECENTS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
 
 private fun Preferences.toPackageSet(key: Preferences.Key<String>): Set<String> = toPackageList(key).toSet()
+
+private fun Preferences.toWidgetIds(): List<Int> =
+    this[Keys.HOSTED_WIDGETS]?.split(",")?.mapNotNull { it.toIntOrNull() } ?: emptyList()
 
 private fun Preferences.toPackageList(key: Preferences.Key<String>): List<String> =
     this[key]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()

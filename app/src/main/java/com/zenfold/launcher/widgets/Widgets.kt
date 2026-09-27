@@ -1,6 +1,7 @@
 package com.zenfold.launcher.widgets
 
 import android.app.AlarmManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,11 +18,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.AlarmOff
@@ -68,15 +73,17 @@ enum class WidgetType(val id: String, val title: String) {
     NOTIFICATIONS("notifications", "Notifications")
 }
 
-// Long-pressing the home screen opens this instead of full Settings — a quick way to
-// turn widgets on/off without leaving the home screen. Full Settings (presets, colors,
-// icon shape...) lives in its own app now; see SettingsActivity.
+// Home menu → Widgets: ZenFold's own widgets as on/off switches, then other apps' widgets
+// (see HostedWidgets.kt) to add or remove.
 @Composable
 fun WidgetPickerOverlay(
     style: CustomStyle,
     hazeState: HazeState,
     enabled: Set<WidgetType>,
     onToggle: (WidgetType, Boolean) -> Unit,
+    hostedWidgetIds: List<Int>,
+    onAddAndroidWidget: (AppWidgetProviderInfo) -> Unit,
+    onRemoveAndroidWidget: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     Box(
@@ -88,11 +95,14 @@ fun WidgetPickerOverlay(
     ) {
         Column(
             Modifier
-                .padding(32.dp)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(24.dp)
                 .fillMaxWidth()
                 .glass(hazeState, RoundedCornerShape(28.dp))
                 // Swallows taps so they don't fall through to the scrim behind and dismiss.
                 .pointerInput(Unit) { detectTapGestures { } }
+                .verticalScroll(rememberScrollState())
                 .padding(20.dp)
         ) {
             Text("Widgets", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = style.onBackground)
@@ -100,7 +110,7 @@ fun WidgetPickerOverlay(
                 "Choose what shows on your home screen",
                 fontSize = 12.sp,
                 color = style.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp, bottom = 14.dp)
+                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
             )
             WidgetType.entries.forEach { widget ->
                 Row(
@@ -112,6 +122,7 @@ fun WidgetPickerOverlay(
                     Switch(checked = widget in enabled, onCheckedChange = { onToggle(widget, it) })
                 }
             }
+            AndroidWidgetsSection(style, hostedWidgetIds, onAddAndroidWidget, onRemoveAndroidWidget)
         }
     }
 }

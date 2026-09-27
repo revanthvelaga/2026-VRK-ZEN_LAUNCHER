@@ -51,6 +51,22 @@ hand-drawn zen circle, as its visual motif.
   like music, and channels marked "no dot"), shown on icons in Home,
   folders, the dock and the drawer. Needs notification access — Settings
   shows whether it's on and links to the system toggle.
+- **Other apps' widgets** — `widgets/HostedWidgets.kt` + an `AppWidgetHost`
+  in `MainActivity`: Home menu → Widgets lists every installed widget
+  (clock, weather, Google search...) with **Add**. Android asks once per
+  provider for permission to bind it, then runs the widget's own setup
+  screen if it has one; added widgets sit full-width on the first home page
+  and can be removed from the same sheet.
+- **Icon packs** — `icons/IconPacks.kt` finds installed packs (the standard
+  ADW/Nova/Apex theme intents) and reads their `appfilter.xml`; pick one in
+  Settings → Icon pack and its icons replace each app's own wherever the
+  pack has one.
+- **Double-tap to lock** — double-tap empty Home space to turn the screen
+  off, via `system/LockScreenService.kt`, an accessibility service that
+  reads nothing and only performs the lock action (the alternative, device
+  admin, would disable fingerprint/face unlock on the next wake). Off until
+  turned on in Android's Accessibility settings; Settings → Double-tap to
+  lock links there.
 - `ui/AppActions.kt` — the shared long-press menu. App shortcuts come from
   `LauncherApps`, which Android only lets the *default* Home app read — so
   they appear once ZenFold is set as your launcher.
@@ -165,6 +181,11 @@ Gradle sync before trusting any of this compiles.
   will ask why; "shows the user's own upcoming events in a home-screen
   widget the user opts into" is the honest answer, and the Today panel
   works fine, just without events, if it's never granted).
+- The double-tap-to-lock **accessibility service** needs Play's
+  AccessibilityService declaration plus an in-app disclosure before the
+  user enables it. Launchers using it only for screen lock are accepted,
+  but expect review questions — or drop `system/LockScreenService.kt` and
+  its manifest entry for the first release.
 - You'll need: a privacy policy URL, a feature graphic, phone screenshots,
   and a content rating questionnaire completed in Play Console.
 - Double-check `applicationId` in `app/build.gradle.kts`

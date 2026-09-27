@@ -40,6 +40,26 @@
         <intent>
             <action android:name="android.settings.SETTINGS" />
         </intent>
+        <!-- Other apps' home-screen widgets (Settings → Widgets → Add a widget). -->
+        <intent>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+        </intent>
+        <!-- Icon packs advertise themselves with one of these launcher-theme actions. -->
+        <intent>
+            <action android:name="org.adw.launcher.THEMES" />
+        </intent>
+        <intent>
+            <action android:name="com.novalauncher.THEME" />
+        </intent>
+        <intent>
+            <action android:name="com.teslacoilsw.launcher.THEME" />
+        </intent>
+        <intent>
+            <action android:name="com.anddoes.launcher.THEME" />
+        </intent>
+        <intent>
+            <action android:name="com.gau.go.launcherex.theme" />
+        </intent>
     </queries>
 
     <application
@@ -80,6 +100,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Double-tap Home to lock. Off until the user turns it on in Android's
+             Accessibility settings; see system/LockScreenService.kt. -->
+        <service
+            android:name=".system.LockScreenService"
+            android:exported="true"
+            android:label="@string/lock_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/lock_service" />
+        </service>
 
         <!-- Powers the optional Notifications widget. Inactive until the user
              grants notification access from Settings; reads titles/text only. -->
