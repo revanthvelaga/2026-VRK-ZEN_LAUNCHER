@@ -22,7 +22,12 @@ data class AppEntry(
 /** What the home screen shows: the glass dock at the bottom, and the icon grid above it. */
 data class HomeApps(val dock: List<AppEntry>, val grid: List<AppEntry>)
 
-private const val GRID_SIZE = 8
+/** A cell in the home screen's icon grid — user-movable, not a fixed list order. */
+data class GridPos(val row: Int, val col: Int)
+
+const val GRID_COLUMNS = 4
+const val GRID_ROWS = 4
+private const val GRID_SIZE = GRID_COLUMNS * GRID_ROWS
 
 object AppRepository {
 

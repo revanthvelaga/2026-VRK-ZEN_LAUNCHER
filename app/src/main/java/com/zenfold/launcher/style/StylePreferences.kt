@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.zenfold.launcher.GridPos
 import com.zenfold.launcher.widgets.WidgetType
 import kotlinx.coroutines.flow.map
 
@@ -37,6 +38,7 @@ private object Keys {
     val WIDGETS = stringPreferencesKey("widgets")
     val NOTE_TEXT = stringPreferencesKey("note_text")
     val RECENTS = stringPreferencesKey("recents")
+    val HOME_LAYOUT = stringPreferencesKey("home_layout")
 }
 
 private const val MAX_RECENTS = 8
@@ -99,6 +101,7 @@ class StylePreferences(private val context: Context) {
     val enabledWidgets = context.launcherPrefs.data.map { it.toWidgetSet() }
     val noteText = context.launcherPrefs.data.map { it[Keys.NOTE_TEXT] ?: "" }
     val recentPackages = context.launcherPrefs.data.map { it.toRecentPackages() }
+    val homeLayout = context.launcherPrefs.data.map { it.toHomeLayout() }
 
     suspend fun applyPreset(style: CustomStyle) {
         context.launcherPrefs.edit { prefs -> prefs.writeCustomStyle(style) }
@@ -130,7 +133,25 @@ class StylePreferences(private val context: Context) {
             prefs[Keys.RECENTS] = next.joinToString(",")
         }
     }
+
+    /** Where the user dragged an app to. Only ever set explicitly — never by auto-placement. */
+    suspend fun setHomePosition(packageName: String, pos: GridPos) {
+        context.launcherPrefs.edit { prefs ->
+            val next = prefs.toHomeLayout() + (packageName to pos)
+            prefs[Keys.HOME_LAYOUT] = next.entries.joinToString(",") { (pkg, p) -> "$pkg:${p.row}:${p.col}" }
+        }
+    }
 }
 
 private fun Preferences.toRecentPackages(): List<String> =
     this[Keys.RECENTS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+
+private fun Preferences.toHomeLayout(): Map<String, GridPos> {
+    val raw = this[Keys.HOME_LAYOUT] ?: return emptyMap()
+    return raw.split(",").mapNotNull { entry ->
+        val parts = entry.split(":")
+        val row = parts.getOrNull(1)?.toIntOrNull()
+        val col = parts.getOrNull(2)?.toIntOrNull()
+        if (parts.size == 3 && row != null && col != null) parts[0] to GridPos(row, col) else null
+    }.toMap()
+}

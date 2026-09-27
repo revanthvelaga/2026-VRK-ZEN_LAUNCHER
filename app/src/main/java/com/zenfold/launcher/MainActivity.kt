@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
             val enabledWidgets by stylePreferences.enabledWidgets.collectAsState(initial = setOf(WidgetType.GLANCE))
             val noteText by stylePreferences.noteText.collectAsState(initial = "")
             val recentPackages by stylePreferences.recentPackages.collectAsState(initial = emptyList())
+            val homeLayout by stylePreferences.homeLayout.collectAsState(initial = emptyMap())
             var showSettings by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
 
@@ -80,9 +81,11 @@ class MainActivity : ComponentActivity() {
                         style = style,
                         enabledWidgets = enabledWidgets,
                         recentPackages = recentPackages,
+                        homeLayout = homeLayout,
                         noteText = noteText,
                         homeSignal = homeSignal,
                         onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
+                        onMoveApp = { pkg, pos -> scope.launch { stylePreferences.setHomePosition(pkg, pos) } },
                         onLaunch = { app ->
                             packageManager.getLaunchIntentForPackage(app.packageName)?.let {
                                 startActivity(it)

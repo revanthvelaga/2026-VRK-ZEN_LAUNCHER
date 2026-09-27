@@ -7,10 +7,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -39,19 +43,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.AppRepository
+import com.zenfold.launcher.GRID_COLUMNS
+import com.zenfold.launcher.GRID_ROWS
+import com.zenfold.launcher.GridPos
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.widgets.WidgetArea
 import com.zenfold.launcher.widgets.WidgetType
@@ -66,10 +78,12 @@ fun HomeScreen(
     style: CustomStyle,
     enabledWidgets: Set<WidgetType>,
     recentPackages: List<String>,
+    homeLayout: Map<String, GridPos>,
     noteText: String,
     homeSignal: Int,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
+    onMoveApp: (String, GridPos) -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
@@ -86,6 +100,9 @@ fun HomeScreen(
             .distinctBy { it.packageName }
             .take(4)
     }
+    // Apps keep a position the user dragged them to; anything else fills the remaining
+    // cells in order, so a freshly installed app (or first run) still shows up somewhere.
+    val slots = remember(home.grid, homeLayout) { layoutGrid(home.grid, homeLayout) }
 
     fun openDrawer(withKeyboard: Boolean) {
         query = ""
@@ -163,7 +180,16 @@ fun HomeScreen(
                         onNoteChange = onNoteChange,
                         onLaunch = onLaunch
                     )
-                    FavoritesGrid(home.grid, style, onLaunch)
+                    FavoritesGrid(
+                        slots = slots,
+                        style = style,
+                        onLaunch = onLaunch,
+                        onMove = { app, from, to ->
+                            val occupant = slots[to]?.takeIf { it.packageName != app.packageName }
+                            onMoveApp(app.packageName, to)
+                            occupant?.let { onMoveApp(it.packageName, from) }
+                        }
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
 
@@ -234,17 +260,118 @@ private fun ClockBlock(style: CustomStyle, now: Long) {
     }
 }
 
+// Apps with a saved position keep it; everyone else fills the remaining cells in order
+// (row-major), so newly-surfaced defaults or recents just appear in the first open spot.
+private fun layoutGrid(candidates: List<AppEntry>, saved: Map<String, GridPos>): Map<GridPos, AppEntry> {
+    val slots = mutableMapOf<GridPos, AppEntry>()
+    val placed = mutableSetOf<String>()
+    candidates.forEach { app ->
+        val pos = saved[app.packageName]
+        if (pos != null && pos.row in 0 until GRID_ROWS && pos.col in 0 until GRID_COLUMNS && pos !in slots) {
+            slots[pos] = app
+            placed += app.packageName
+        }
+    }
+    var cursor = 0
+    candidates.forEach { app ->
+        if (app.packageName in placed) return@forEach
+        while (cursor < GRID_ROWS * GRID_COLUMNS && GridPos(cursor / GRID_COLUMNS, cursor % GRID_COLUMNS) in slots) cursor++
+        if (cursor >= GRID_ROWS * GRID_COLUMNS) return@forEach
+        slots[GridPos(cursor / GRID_COLUMNS, cursor % GRID_COLUMNS)] = app
+        cursor++
+    }
+    return slots
+}
+
+// Long-press and drag any icon to an empty cell, or onto another icon to swap places —
+// positions are saved per app, not a fixed list order.
 @Composable
-private fun FavoritesGrid(apps: List<AppEntry>, style: CustomStyle, onLaunch: (AppEntry) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        apps.chunked(4).forEach { row ->
-            Row(Modifier.fillMaxWidth()) {
-                row.forEach { app ->
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-                        AppIcon(app, style = style, showLabel = style.showHomeLabels, onClick = { onLaunch(app) })
-                    }
+private fun FavoritesGrid(
+    slots: Map<GridPos, AppEntry>,
+    style: CustomStyle,
+    onLaunch: (AppEntry) -> Unit,
+    onMove: (app: AppEntry, from: GridPos, to: GridPos) -> Unit
+) {
+    val density = LocalDensity.current
+    var dragging by remember { mutableStateOf<AppEntry?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var dragOrigin by remember { mutableStateOf(GridPos(0, 0)) }
+    var hoverTarget by remember { mutableStateOf<GridPos?>(null) }
+    val haptics = LocalHapticFeedback.current
+
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val cellPx = with(density) { maxWidth.toPx() } / GRID_COLUMNS
+        val rowPx = cellPx * 1.3f
+        val cellDp = with(density) { cellPx.toDp() }
+        val rowDp = with(density) { rowPx.toDp() }
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(rowDp * GRID_ROWS)
+        ) {
+            hoverTarget?.takeIf { it != dragOrigin }?.let { target ->
+                Box(
+                    Modifier
+                        .offset { IntOffset((target.col * cellPx).roundToInt(), (target.row * rowPx).roundToInt()) }
+                        .size(cellDp, rowDp)
+                        .padding(4.dp)
+                        .background(style.accent.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
+                )
+            }
+
+            slots.forEach { (pos, app) ->
+                val isDragging = dragging?.packageName == app.packageName
+                val baseX = pos.col * cellPx
+                val baseY = pos.row * rowPx
+
+                Box(
+                    Modifier
+                        .offset {
+                            if (isDragging) {
+                                IntOffset((baseX + dragOffset.x).roundToInt(), (baseY + dragOffset.y).roundToInt())
+                            } else {
+                                IntOffset(baseX.roundToInt(), baseY.roundToInt())
+                            }
+                        }
+                        .size(cellDp, rowDp)
+                        .zIndex(if (isDragging) 1f else 0f)
+                        // Keyed on the app's position too: after a swap, this cell's
+                        // coordinates change, and the gesture detector needs to restart
+                        // to pick up the new baseX/baseY rather than keep stale ones.
+                        .pointerInput(app.packageName, pos) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    dragging = app
+                                    dragOrigin = pos
+                                    dragOffset = Offset.Zero
+                                    hoverTarget = pos
+                                },
+                                onDrag = { change, amount ->
+                                    change.consume()
+                                    dragOffset += amount
+                                    val col = ((baseX + dragOffset.x + cellPx / 2) / cellPx).toInt().coerceIn(0, GRID_COLUMNS - 1)
+                                    val row = ((baseY + dragOffset.y + rowPx / 2) / rowPx).toInt().coerceIn(0, GRID_ROWS - 1)
+                                    hoverTarget = GridPos(row, col)
+                                },
+                                onDragEnd = {
+                                    hoverTarget?.takeIf { it != dragOrigin }?.let { onMove(app, dragOrigin, it) }
+                                    dragging = null
+                                    hoverTarget = null
+                                    dragOffset = Offset.Zero
+                                },
+                                onDragCancel = {
+                                    dragging = null
+                                    hoverTarget = null
+                                    dragOffset = Offset.Zero
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    AppIcon(app, style = style, showLabel = style.showHomeLabels, onClick = { onLaunch(app) })
                 }
-                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
