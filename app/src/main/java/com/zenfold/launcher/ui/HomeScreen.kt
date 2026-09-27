@@ -80,8 +80,11 @@ fun HomeScreen(
     val now = rememberCurrentTimeMillis()
 
     val home = remember(apps, recentPackages) { AppRepository.homeApps(context, apps, recentPackages) }
-    val suggested = remember(apps, recentPackages) {
-        recentPackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } }.take(4)
+    // Recent apps first, topped up with the dock/grid defaults so the row is never empty.
+    val suggested = remember(apps, recentPackages, home) {
+        (recentPackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } } + home.dock + home.grid)
+            .distinctBy { it.packageName }
+            .take(4)
     }
 
     fun openDrawer(withKeyboard: Boolean) {
