@@ -8,7 +8,7 @@ import androidx.compose.ui.text.font.FontWeight
 
 /** Named quick-apply presets. Picking one fills in every field of [CustomStyle] at once. */
 enum class LauncherStyle(val displayName: String, val tagline: String) {
-    ZEN("Zen", "Quiet stone and moss — the original ZenFold look"),
+    ZEN("Zen", "Crystal glass over a violet-cyan glow"),
     PIXEL("Pixel", "Clean Material You, circular icons"),
     SAMSUNG("Samsung", "Bold clock, soft squircle icons"),
     ONEPLUS("OxygenOS", "Minimal glass, hidden labels"),
@@ -47,6 +47,10 @@ data class CustomStyle(
     val secondary: Color,
     val onBackground: Color,
     val onSurfaceVariant: Color,
+    // Wallpaper glows (alpha baked in): top-left, top-right, bottom-right.
+    val glowTopStart: Color,
+    val glowTopEnd: Color,
+    val glowBottomEnd: Color,
     val iconShapeKind: IconShapeKind,
     val iconSize: IconSize,
     val fontScale: FontScale,
@@ -68,14 +72,18 @@ object AccentSwatches {
     )
 }
 
+// Colors match the per-preset values in the HTML design preview.
 object StylePresets {
     val Zen = CustomStyle(
-        background = Color(0xFF16191A),
-        surface = Color(0xFF23282A),
+        background = Color(0xFF0A0E1A),
+        surface = Color(0xFF1A1230),
         accent = Color(0xFF8A9A80),
-        secondary = Color(0xFFC98A5B),
-        onBackground = Color(0xFFEDEAE1),
-        onSurfaceVariant = Color(0xFFB7BDB5),
+        secondary = Color(0xFF5EC8FF),
+        onBackground = Color(0xFFF4F2FF),
+        onSurfaceVariant = Color(0xFFA6A4B8),
+        glowTopStart = Color(0x8C8B5CF6),
+        glowTopEnd = Color(0x5222D3EE),
+        glowBottomEnd = Color(0x33F59E0B),
         iconShapeKind = IconShapeKind.SQUIRCLE,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
@@ -92,6 +100,9 @@ object StylePresets {
         secondary = Color(0xFFFDE293),
         onBackground = Color(0xFFE3E2E6),
         onSurfaceVariant = Color(0xFFC4C6D0),
+        glowTopStart = Color(0x4DA8C7FA),
+        glowTopEnd = Color(0x2EFDE293),
+        glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.CIRCLE,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
@@ -108,6 +119,9 @@ object StylePresets {
         secondary = Color(0xFF7C9CBF),
         onBackground = Color(0xFFEDF1F5),
         onSurfaceVariant = Color(0xFFA9B4C0),
+        glowTopStart = Color(0x6B4FA3FF),
+        glowTopEnd = Color(0x387C9CBF),
+        glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.SQUIRCLE,
         iconSize = IconSize.LARGE,
         fontScale = FontScale.LARGE,
@@ -124,6 +138,9 @@ object StylePresets {
         secondary = Color(0xFF8B5CF6),
         onBackground = Color(0xFFF4F2FF),
         onSurfaceVariant = Color(0xFFB7BEDD),
+        glowTopStart = Color(0x735EC8FF),
+        glowTopEnd = Color(0x4D8B5CF6),
+        glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.ROUNDED_SQUARE,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
@@ -140,13 +157,16 @@ object StylePresets {
         secondary = Color(0xFFFFB454),
         onBackground = Color(0xFFFBEFE9),
         onSurfaceVariant = Color(0xFFD9BBAC),
+        glowTopStart = Color(0x59FF6B35),
+        glowTopEnd = Color(0x38FFB454),
+        glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.ROUNDED_SQUARE,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
         showHomeLabels = true,
         clockCentered = false,
         clockWeight = FontWeight.Bold,
-        statusBarStyle = StatusBarStyle.DARK_ICONS
+        statusBarStyle = StatusBarStyle.LIGHT_ICONS
     )
 
     val presets: List<Pair<LauncherStyle, CustomStyle>> = listOf(

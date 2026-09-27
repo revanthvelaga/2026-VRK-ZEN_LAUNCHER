@@ -4,11 +4,31 @@
     <!-- Lets the launcher pull down the notification shade. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
-    <!-- Android 11+ package visibility: required to enumerate installed apps. -->
+    <!-- Android 11+ package visibility: required to enumerate installed apps, and to
+         find the default dialer/camera/browser/etc. for the dock and home grid. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
         </intent>
     </queries>
 
@@ -25,6 +45,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.ZenFold.Home">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

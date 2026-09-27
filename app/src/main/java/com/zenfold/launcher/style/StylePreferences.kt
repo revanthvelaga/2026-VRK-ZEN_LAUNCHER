@@ -23,6 +23,9 @@ private object Keys {
     val SECONDARY = intPreferencesKey("secondary")
     val ON_BACKGROUND = intPreferencesKey("on_background")
     val ON_SURFACE_VARIANT = intPreferencesKey("on_surface_variant")
+    val GLOW_TOP_START = intPreferencesKey("glow_top_start")
+    val GLOW_TOP_END = intPreferencesKey("glow_top_end")
+    val GLOW_BOTTOM_END = intPreferencesKey("glow_bottom_end")
     val ICON_SHAPE = stringPreferencesKey("icon_shape")
     val ICON_SIZE = stringPreferencesKey("icon_size")
     val FONT_SCALE = stringPreferencesKey("font_scale")
@@ -49,6 +52,9 @@ private fun Preferences.toCustomStyle(): CustomStyle {
         secondary = this[Keys.SECONDARY]?.let { Color(it) } ?: default.secondary,
         onBackground = this[Keys.ON_BACKGROUND]?.let { Color(it) } ?: default.onBackground,
         onSurfaceVariant = this[Keys.ON_SURFACE_VARIANT]?.let { Color(it) } ?: default.onSurfaceVariant,
+        glowTopStart = this[Keys.GLOW_TOP_START]?.let { Color(it) } ?: default.glowTopStart,
+        glowTopEnd = this[Keys.GLOW_TOP_END]?.let { Color(it) } ?: default.glowTopEnd,
+        glowBottomEnd = this[Keys.GLOW_BOTTOM_END]?.let { Color(it) } ?: default.glowBottomEnd,
         iconShapeKind = enumOrDefault(this[Keys.ICON_SHAPE], default.iconShapeKind),
         iconSize = enumOrDefault(this[Keys.ICON_SIZE], default.iconSize),
         fontScale = enumOrDefault(this[Keys.FONT_SCALE], default.fontScale),
@@ -66,6 +72,9 @@ private fun MutablePreferences.writeCustomStyle(style: CustomStyle) {
     this[Keys.SECONDARY] = style.secondary.toArgb()
     this[Keys.ON_BACKGROUND] = style.onBackground.toArgb()
     this[Keys.ON_SURFACE_VARIANT] = style.onSurfaceVariant.toArgb()
+    this[Keys.GLOW_TOP_START] = style.glowTopStart.toArgb()
+    this[Keys.GLOW_TOP_END] = style.glowTopEnd.toArgb()
+    this[Keys.GLOW_BOTTOM_END] = style.glowBottomEnd.toArgb()
     this[Keys.ICON_SHAPE] = style.iconShapeKind.name
     this[Keys.ICON_SIZE] = style.iconSize.name
     this[Keys.FONT_SCALE] = style.fontScale.name

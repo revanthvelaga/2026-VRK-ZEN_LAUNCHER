@@ -13,8 +13,15 @@ hand-drawn zen circle, as its visual motif.
   `AndroidManifest.xml` intent-filter) and hosts the Compose UI.
 - `AppRepository.kt` — queries the real list of installed, launchable apps
   via `PackageManager`.
-- `ui/HomeScreen.kt`, `ui/AppDrawer.kt`, `ui/AppIcon.kt` — clock + favorites
-  grid, and a searchable app drawer as a bottom sheet.
+- `ui/HomeScreen.kt` — live clock, widgets, an 8-app grid, and a glass search
+  bar + dock. The dock holds the phone's own default dialer, SMS app, camera
+  and browser; the grid is filled with other defaults (gallery, maps, music,
+  calendar...), then recent apps (`AppRepository.homeApps`). Swipe up or tap
+  Search to open the drawer; long-press empty space for Settings.
+- `ui/AppDrawer.kt` — a full-screen glass drawer drawn in the launcher's own
+  window: search field, "Suggested" row of recent apps, and an A–Z rail you
+  can tap or drag. Pull down at the top of the list (or press Back/Home) to
+  close it.
 - `ui/SettingsScreen.kt` — long-press the home screen to open it. Lets you
   pick a named style preset (Zen, Pixel, Samsung, OxygenOS, Mi) or tune each
   piece yourself: accent color, icon shape and size, font size, whether
@@ -45,21 +52,20 @@ hand-drawn zen circle, as its visual motif.
     restyle or replace.
 - `ui/theme/Theme.kt` — builds the Material3 color scheme from whatever
   `CustomStyle` is active, rather than a fixed palette.
-- `ui/Wallpaper.kt` — a soft two-glow gradient (in the active style's own
-  accent/secondary colors) drawn behind the home screen and Settings. It
-  exists specifically to give the blur below something with real detail to
-  blur — a flat color blurs into itself.
+- `ui/Wallpaper.kt` — the gradient-and-glow wallpaper from the design
+  preview, with glow colors set per preset (`CustomStyle.glow*`). The glass
+  surfaces blur it, so it has to have real color variation to show through.
+- `widgets/Widgets.kt`'s **Glance** card shows the next alarm and battery
+  level — real data needing no permissions. (Weather would need a location
+  permission plus a weather API.)
 - Real backdrop blur via [Haze](https://github.com/chrisbanes/haze)
   (`dev.chrisbanes.haze:haze`, pinned to `0.7.3` in
   `app/build.gradle.kts` — check Maven Central / the project's releases
   page and bump this if that version's been pulled). `Wallpaper` is the
-  blur source (`Modifier.haze(state)`); the home-screen widget cards and
-  the preset rows in Settings are the blurred glass surfaces
-  (`Modifier.hazeChild(state, shape)`). Haze degrades gracefully on
-  pre-Android 13 devices (tint only, no blur) rather than crashing.
-  **Not yet extended to** the app drawer's bottom sheet — Compose's
-  `ModalBottomSheet` renders through its own overlay, and wiring Haze
-  through that boundary wasn't verified here.
+  blur source (`Modifier.haze(state)`); widget cards, the search bar, the
+  dock, the app drawer and the Settings preset rows are glass surfaces
+  (`Modifier.glass` in `ui/Glass.kt`, built on `Modifier.hazeChild`). Haze
+  degrades gracefully on devices without blur support (tint only).
 
 This is an early, working skeleton — not yet the full feature set discussed
 (gesture navigation, real third-party widget hosting, hidden space, lock

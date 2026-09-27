@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,8 +38,8 @@ import com.zenfold.launcher.style.IconSize
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.widgets.WidgetType
+import androidx.compose.ui.graphics.Color
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeChild
 
 @Composable
 fun SettingsScreen(
@@ -53,7 +55,11 @@ fun SettingsScreen(
     Box(Modifier.fillMaxSize()) {
         Wallpaper(style, hazeState, Modifier.fillMaxSize())
         LazyColumn(
-            Modifier.fillMaxSize().padding(top = 56.dp, start = 20.dp, end = 20.dp, bottom = 32.dp),
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(top = 16.dp, start = 20.dp, end = 20.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(28.dp)
         ) {
             item {
@@ -180,9 +186,8 @@ private fun PresetRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(rowShape)
-            .hazeChild(state = hazeState, shape = rowShape)
-            .background(preset.surface.copy(alpha = if (selected) 0.55f else 0.3f))
+            .glass(hazeState, rowShape)
+            .background(if (selected) Color.White.copy(alpha = 0.10f) else Color.Transparent)
             .clickable { onApply(preset) }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
