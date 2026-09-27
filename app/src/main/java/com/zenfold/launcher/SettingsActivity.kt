@@ -41,6 +41,10 @@ class SettingsActivity : ComponentActivity() {
             ZenFoldTheme(style = style) {
                 SettingsScreen(
                     style = style,
+                    apps = apps.filterNot { it.packageName in hiddenPackages },
+                    onApplyStudioTheme = { theme, wallpaper, icons ->
+                        scope.launch { stylePreferences.applyStudioTheme(theme, wallpaper, icons) }
+                    },
                     enabledWidgets = enabledWidgets,
                     hiddenApps = apps.filter { it.packageName in hiddenPackages },
                     onUnhideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, false) } },

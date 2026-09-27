@@ -24,7 +24,8 @@ enum class IconShapeKind(val shape: Shape, val label: String) {
 
 enum class IconStyle(val label: String) {
     CRYSTAL("Crystal"),
-    ORIGINAL("Original")
+    ORIGINAL("Original"),
+    TONAL("Tonal")
 }
 
 enum class IconSize(val sizeDp: Int, val label: String) {
@@ -42,6 +43,14 @@ enum class FontScale(val scale: Float, val label: String) {
 enum class StatusBarStyle(val label: String) {
     LIGHT_ICONS("Light icons"),
     DARK_ICONS("Dark icons")
+}
+
+enum class WallpaperArt(val label: String) {
+    GLOW("Glow"), DUNE("Dune"), ORBIT("Orbit"), MIST("Mist")
+}
+
+enum class ClockDesign(val label: String) {
+    CLASSIC("Classic"), EDITORIAL("Editorial"), STACKED("Stacked")
 }
 
 /** Every independently customizable piece of the launcher's look. */
@@ -68,7 +77,9 @@ data class CustomStyle(
     val drawerColumns: Int = 4,
     val searchOnSwipe: Boolean = false,
     val swipeDownSearch: Boolean = false,
-    val showSearchPill: Boolean = true
+    val showSearchPill: Boolean = true,
+    val wallpaperArt: WallpaperArt = WallpaperArt.GLOW,
+    val clockDesign: ClockDesign = ClockDesign.CLASSIC
 )
 
 /** A short list of accent swatches offered in Settings, independent of any preset. */

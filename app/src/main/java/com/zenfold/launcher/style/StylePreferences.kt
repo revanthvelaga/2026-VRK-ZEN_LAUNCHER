@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.map
 private val Context.launcherPrefs by preferencesDataStore(name = "launcher_prefs")
 
 private object Keys {
+    val WALLPAPER_ART = stringPreferencesKey("wallpaper_art")
+    val CLOCK_DESIGN = stringPreferencesKey("clock_design")
     val APP_PAGES = booleanPreferencesKey("app_pages")
     val DRAWER_COLUMNS = intPreferencesKey("drawer_columns")
     val SEARCH_ON_SWIPE = booleanPreferencesKey("search_on_swipe")
@@ -91,11 +93,15 @@ private fun Preferences.toCustomStyle(): CustomStyle {
         drawerColumns = (this[Keys.DRAWER_COLUMNS] ?: 4).coerceIn(3, 5),
         searchOnSwipe = this[Keys.SEARCH_ON_SWIPE] ?: false,
         swipeDownSearch = this[Keys.SWIPE_DOWN_SEARCH] ?: false,
-        showSearchPill = this[Keys.SEARCH_PILL] ?: true
+        showSearchPill = this[Keys.SEARCH_PILL] ?: true,
+        wallpaperArt = enumOrDefault(this[Keys.WALLPAPER_ART], WallpaperArt.GLOW),
+        clockDesign = enumOrDefault(this[Keys.CLOCK_DESIGN], ClockDesign.CLASSIC)
     )
 }
 
 private fun MutablePreferences.writeCustomStyle(style: CustomStyle) {
+    this[Keys.WALLPAPER_ART] = style.wallpaperArt.name
+    this[Keys.CLOCK_DESIGN] = style.clockDesign.name
     this[Keys.APP_PAGES] = style.showAppPages
     this[Keys.DRAWER_COLUMNS] = style.drawerColumns.coerceIn(3, 5)
     this[Keys.SEARCH_ON_SWIPE] = style.searchOnSwipe
@@ -179,6 +185,17 @@ class StylePreferences(private val context: Context) {
     suspend fun editDock(transform: (List<String>) -> List<String>) {
         context.launcherPrefs.edit { prefs ->
             prefs[Keys.DOCK] = transform(prefs.toPackageList(Keys.DOCK)).distinct().take(MAX_DOCK_APPS).joinToString(",")
+        }
+    }
+
+    /** One transaction: theme choices cannot leave the wallpaper and palette out of sync. */
+    suspend fun applyStudioTheme(style: CustomStyle, matchingWallpaper: Boolean, themeIcons: Boolean) {
+        context.launcherPrefs.edit { prefs ->
+            val current = prefs.toCustomStyle()
+            val next = StudioThemes.withCurrentNavigation(style, current)
+            prefs.writeCustomStyle(if (themeIcons) next else next.copy(iconStyle = current.iconStyle, iconShapeKind = current.iconShapeKind))
+            if (matchingWallpaper) prefs[Keys.PHONE_WALLPAPER] = false
+            if (themeIcons) prefs[Keys.ICON_PACK] = ""
         }
     }
 

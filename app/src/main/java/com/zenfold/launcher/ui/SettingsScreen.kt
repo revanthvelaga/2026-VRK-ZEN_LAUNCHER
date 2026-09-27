@@ -49,6 +49,9 @@ import com.zenfold.launcher.icons.installedIconPacks
 import com.zenfold.launcher.system.LockScreenService
 import com.zenfold.launcher.style.AccentSwatches
 import com.zenfold.launcher.style.CustomStyle
+import com.zenfold.launcher.style.ClockDesign
+import com.zenfold.launcher.style.WallpaperArt
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.zenfold.launcher.style.FontScale
 import com.zenfold.launcher.style.IconShapeKind
 import com.zenfold.launcher.style.IconSize
@@ -62,6 +65,8 @@ import dev.chrisbanes.haze.HazeState
 @Composable
 fun SettingsScreen(
     style: CustomStyle,
+    apps: List<AppEntry>,
+    onApplyStudioTheme: (CustomStyle, Boolean, Boolean) -> Unit,
     enabledWidgets: Set<WidgetType>,
     hiddenApps: List<AppEntry>,
     onUnhideApp: (String) -> Unit,
@@ -77,6 +82,11 @@ fun SettingsScreen(
     onDone: () -> Unit
 ) {
     val hazeState = remember { HazeState() }
+    var studioOpen by rememberSaveable { mutableStateOf(false) }
+    if (studioOpen) {
+        ThemeStudio(style, apps, onApplyStudioTheme, { studioOpen = false })
+        return
+    }
 
     Box(Modifier.fillMaxSize()) {
         // Settings is an ordinary window (no windowShowWallpaper), so it keeps the gradient.
@@ -96,6 +106,23 @@ fun SettingsScreen(
                 }
             }
 
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                    .background(style.surface).clickable { studioOpen = true }.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("DESIGN STUDIO", color = style.accent, fontSize = 12.sp)
+                    Text("A home that feels like you.", color = style.onBackground, fontSize = 25.sp)
+                    Text("Four complete looks. Wallpapers, icons and clocks, designed together.", color = style.onSurfaceVariant, fontSize = 14.sp)
+                    Text("Explore themes →", color = style.accent, fontSize = 14.sp)
+                }
+            }
+            item {
+                SettingsSection(style, "Clock design") {
+                    SegmentedRow(style, ClockDesign.entries.toList(), style.clockDesign, { it.label }) {
+                        onChange(style.copy(clockDesign = it))
+                    }
+                }
+            }
             item {
                 SettingsSection(style, "Presets") {
                     StylePresets.presets.forEach { (launcherStyle, preset) ->
@@ -242,9 +269,13 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(style, "Wallpaper") {
+                    SegmentedRow(style, WallpaperArt.entries.toList(), style.wallpaperArt, { it.label }) {
+                        onChange(style.copy(wallpaperArt = it))
+                        onPhoneWallpaperChange(false)
+                    }
                     val context = LocalContext.current
                     ChoiceRow(style, "Phone wallpaper", selected = phoneWallpaper) { onPhoneWallpaperChange(true) }
-                    ChoiceRow(style, "ZenFold gradient (this style's colors)", selected = !phoneWallpaper) { onPhoneWallpaperChange(false) }
+                    ChoiceRow(style, "ZenFold artwork (this style's colors)", selected = !phoneWallpaper) { onPhoneWallpaperChange(false) }
                     TextButton(onClick = {
                         onPhoneWallpaperChange(true)
                         openWallpaperPicker(context)

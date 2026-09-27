@@ -57,3 +57,8 @@ sandboxes: **GitHub Actions is the compiler and test runner**.
 
 - Phone-only checks nobody can automate here: widget adding on Xiaomi/HyperOS, the
   swipe-down shade on the owner's ROM, and wallpaper parallax.
+
+- Astra design pass (28 Sep 2026): see `docs/design/ASTRA-TO-CLAUDE.md` and
+  `docs/design/COMPETITIVE-REVIEW.md`. Base `2789796`. Native Design Studio and
+  notification inbox need Claude's compile/review; widget layout format remains
+  untouched. Phone/Messages in the concept are not implemented companion apps.
