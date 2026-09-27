@@ -63,7 +63,12 @@ data class CustomStyle(
     val showHomeLabels: Boolean,
     val clockCentered: Boolean,
     val clockWeight: FontWeight,
-    val statusBarStyle: StatusBarStyle
+    val statusBarStyle: StatusBarStyle,
+    val showAppPages: Boolean = true,
+    val drawerColumns: Int = 4,
+    val searchOnSwipe: Boolean = false,
+    val swipeDownSearch: Boolean = false,
+    val showSearchPill: Boolean = true
 )
 
 /** A short list of accent swatches offered in Settings, independent of any preset. */

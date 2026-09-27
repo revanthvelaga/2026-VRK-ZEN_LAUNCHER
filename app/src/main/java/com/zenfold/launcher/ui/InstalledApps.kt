@@ -10,20 +10,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.AppRepository
 import com.zenfold.launcher.icons.IconPack
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private class IconPackHolder {
-    var packageName: String? = null
-    var pack: IconPack? = null
-}
 
 /**
  * Installed apps, kept current: the launcher's activity lives for days, so apps installed,
@@ -34,20 +31,23 @@ private class IconPackHolder {
 fun rememberInstalledApps(iconPackPackage: String? = null): List<AppEntry> {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val iconPack = remember { IconPackHolder() }
-    var apps by remember { mutableStateOf(AppRepository.installedApps(context)) }
+    val currentPackPackage by rememberUpdatedState(iconPackPackage)
+    var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
+    val reloadJob = remember { arrayOfNulls<Job>(1) }
 
     fun reload() {
-        scope.launch { apps = withContext(Dispatchers.IO) { AppRepository.installedApps(context, iconPack.pack) } }
+        reloadJob[0]?.cancel()
+        val requestedPack = currentPackPackage
+        reloadJob[0] = scope.launch {
+            apps = withContext(Dispatchers.IO) {
+                val pack = requestedPack?.let { IconPack.load(context, it) }
+                AppRepository.installedApps(context, pack)
+            }
+        }
     }
 
     LaunchedEffect(iconPackPackage) {
-        if (iconPackPackage == iconPack.packageName) return@LaunchedEffect
-        apps = withContext(Dispatchers.IO) {
-            iconPack.pack = iconPackPackage?.let { IconPack.load(context, it) }
-            iconPack.packageName = iconPackPackage
-            AppRepository.installedApps(context, iconPack.pack)
-        }
+        reload()
     }
 
     DisposableEffect(context) {

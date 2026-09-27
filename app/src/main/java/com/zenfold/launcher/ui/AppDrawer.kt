@@ -1,5 +1,16 @@
 package com.zenfold.launcher.ui
 
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import com.zenfold.launcher.SettingsActivity
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -78,6 +89,16 @@ import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+private enum class DrawerCategory(val label: String, val categories: Set<Int> = emptySet()) {
+    ALL("All"), RECENT("Recent"),
+    SOCIAL("Social", setOf(ApplicationInfo.CATEGORY_SOCIAL)),
+    MEDIA("Media", setOf(ApplicationInfo.CATEGORY_AUDIO, ApplicationInfo.CATEGORY_VIDEO, ApplicationInfo.CATEGORY_IMAGE)),
+    GAMES("Games", setOf(ApplicationInfo.CATEGORY_GAME)),
+    WORK("Work", setOf(ApplicationInfo.CATEGORY_PRODUCTIVITY)),
+    MAPS("Maps", setOf(ApplicationInfo.CATEGORY_MAPS)),
+    NEWS("News", setOf(ApplicationInfo.CATEGORY_NEWS))
+}
+
 private val railLetters = ('A'..'Z').toList() + '#'
 
 private fun sectionOf(app: AppEntry): Char {
@@ -94,6 +115,7 @@ private data class Section(val letter: Char, val apps: List<AppEntry>, val heade
 fun AppDrawer(
     apps: List<AppEntry>,
     suggested: List<AppEntry>,
+    recent: List<AppEntry>,
     style: CustomStyle,
     hazeState: HazeState,
     badged: Set<String>,
@@ -105,6 +127,19 @@ fun AppDrawer(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var category by rememberSaveable { mutableStateOf(DrawerCategory.ALL) }
+    val categories = remember(apps) {
+        DrawerCategory.entries.filter { it.categories.isEmpty() || apps.any { app -> app.category in it.categories } }
+    }
+    LaunchedEffect(categories) { if (category !in categories) category = DrawerCategory.ALL }
+    val filteredApps = remember(apps, recent, category) {
+        when (category) {
+            DrawerCategory.ALL -> apps
+            DrawerCategory.RECENT -> recent
+            else -> apps.filter { it.category in category.categories }
+        }
+    }
     // Keyed by grid item key, not package: an app can be in both Suggested and A–Z.
     var menuFor by remember { mutableStateOf<String?>(null) }
 
@@ -129,19 +164,21 @@ fun AppDrawer(
 
     val searching = query.isNotBlank()
     val results = remember(apps, query) {
-        val q = query.trim()
-        if (q.isEmpty()) emptyList() else apps.filter { it.label.contains(q, ignoreCase = true) }
+        apps.mapNotNull { app -> AppSearch.score(app.label, query)?.let { app to it } }
+            .sortedWith(compareBy<Pair<AppEntry, Int>> { it.second }.thenBy { it.first.label.lowercase() })
+            .map { it.first }
     }
-    val showSuggested = !searching && suggested.isNotEmpty()
+    val showSuggested = !searching && category == DrawerCategory.ALL && suggested.isNotEmpty()
     val gridState = rememberLazyGridState()
+    LaunchedEffect(query, category) { gridState.scrollToItem(0) }
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
 
     // A–Z sections (with '#' for digits/symbols/other scripts last). Grid item indices
     // are counted here so the rail can jump straight to a section header.
-    val sections = remember(apps, showSuggested, suggested.size) {
+    val sections = remember(filteredApps, showSuggested, suggested.size) {
         var index = if (showSuggested) suggested.size + 2 else 0
-        apps.groupBy(::sectionOf)
+        filteredApps.groupBy(::sectionOf)
             .toSortedMap(compareBy<Char> { if (it == '#') Char.MAX_VALUE else it })
             .map { (letter, sectionApps) ->
                 Section(letter, sectionApps, index).also { index += 1 + sectionApps.size }
@@ -178,15 +215,19 @@ fun AppDrawer(
         }
     }
 
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(focusSearch) {
-        if (focusSearch) focusRequester.requestFocus()
+        if (focusSearch) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
     }
 
     Box(
         modifier
             .fillMaxSize()
             .hazeChild(state = hazeState, shape = RectangleShape)
-            .background(style.background.copy(alpha = 0.55f))
+            .background(style.background.copy(alpha = 0.94f))
             // Swallow taps on empty space so they don't fall through to the home screen.
             .pointerInput(Unit) { detectTapGestures { } }
             .nestedScroll(pullDownToClose)
@@ -217,21 +258,32 @@ fun AppDrawer(
                 )
             }
 
-            SearchField(
-                query = query,
-                onQueryChange = onQueryChange,
-                style = style,
-                focusRequester = focusRequester,
-                onGo = { results.firstOrNull()?.let(onLaunch) }
-            )
-
-            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Your apps", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = style.onBackground)
+                    Text(if (searching) "${results.size} results" else "${apps.size} apps · long-press for options",
+                        fontSize = 12.sp, color = style.onSurfaceVariant)
+                }
+                IconButton(onClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) }) {
+                    Icon(Icons.Filled.Settings, "Launcher settings", tint = style.onBackground)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, "Close apps", tint = style.onBackground)
+                }
+            }
+            if (!searching) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(categories.size) { index ->
+                    val option = categories[index]
+                    FilterChip(selected = category == option, onClick = { category = option }, label = { Text(option.label) })
+                }
+            }
+            Spacer(Modifier.height(12.dp))
 
             Box(Modifier.weight(1f)) {
-                val showRail = !searching && sections.size > 1
+                val showRail = !searching && category != DrawerCategory.RECENT && sections.size > 1
                 LazyVerticalGrid(
                     state = gridState,
-                    columns = GridCells.Fixed(4),
+                    columns = GridCells.Fixed(style.drawerColumns),
                     contentPadding = PaddingValues(end = if (showRail) 24.dp else 0.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
@@ -244,7 +296,16 @@ fun AppDrawer(
                         items(results, key = { "r-" + it.packageName }) { app ->
                             DrawerApp("r-" + app.packageName, app)
                         }
+                    } else if (category == DrawerCategory.RECENT && recent.isNotEmpty()) {
+                        items(recent, key = { "recent-" + it.packageName }) { app ->
+                            DrawerApp("recent-" + app.packageName, app)
+                        }
                     } else {
+                        if (filteredApps.isEmpty()) {
+                            item(key = "no-category-apps", span = { GridItemSpan(maxLineSpan) }) {
+                                Text("No apps here yet", color = style.onSurfaceVariant, modifier = Modifier.padding(24.dp))
+                            }
+                        }
                         if (showSuggested) {
                             item(key = "h-suggested", span = { GridItemSpan(maxLineSpan) }) {
                                 SectionLabel("Suggested", style)
@@ -285,6 +346,14 @@ fun AppDrawer(
                     )
                 }
             }
+            SearchField(
+                query = query,
+                onQueryChange = onQueryChange,
+                style = style,
+                focusRequester = focusRequester,
+                onGo = { results.firstOrNull()?.let(onLaunch) }
+            )
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -328,6 +397,9 @@ private fun SearchField(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
             )
+        }
+        if (query.isNotEmpty()) IconButton(onClick = { onQueryChange("") }) {
+            Icon(Icons.Filled.Close, "Clear search", tint = style.onBackground)
         }
     }
 }

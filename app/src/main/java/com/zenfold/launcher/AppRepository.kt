@@ -18,7 +18,8 @@ import com.zenfold.launcher.icons.IconPack
 data class AppEntry(
     val label: String,
     val packageName: String,
-    val icon: Drawable
+    val icon: Drawable,
+    val category: Int = android.content.pm.ApplicationInfo.CATEGORY_UNDEFINED
 )
 
 /** What the home screen shows: the glass dock at the bottom, and the icon grid above it. */
@@ -45,7 +46,8 @@ object AppRepository {
                 AppEntry(
                     label = resolveInfo.loadLabel(pm).toString(),
                     packageName = activity.packageName,
-                    icon = iconPack?.iconFor(ComponentName(activity.packageName, activity.name)) ?: resolveInfo.loadIcon(pm)
+                    icon = iconPack?.iconFor(ComponentName(activity.packageName, activity.name)) ?: resolveInfo.loadIcon(pm),
+                    category = activity.applicationInfo.category
                 )
             }
             .distinctBy { it.packageName }

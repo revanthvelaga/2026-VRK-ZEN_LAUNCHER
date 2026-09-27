@@ -177,11 +177,44 @@ hand-drawn zen circle, as its visual motif.
   (`Modifier.glass` in `ui/Glass.kt`, built on `Modifier.hazeChild`). Haze
   degrades gracefully on devices without blur support (tint only).
 
-This is an early, working skeleton — not yet the full feature set discussed
-(gesture navigation, real third-party widget hosting, hidden space, lock
-screen). It also has not been built or run on a device/emulator from this
-environment (no Android SDK here) — open it in Android Studio and let
-Gradle sync before trusting any of this compiles.
+## Usability upgrade — September 2026
+
+- **Home layout choice:** keep the existing app pages or choose Home + app drawer in
+  Settings. Switching preserves the saved home layout, folders and dock.
+- **Drawer:** high-contrast surface, category chips (from Android app metadata), a
+  Recent tab, 3/4/5-column density and a bottom search field reachable with one hand.
+  Unclassified apps are always available in All. Search spans all visible apps,
+  regardless of the selected category.
+- **Smarter local search:** exact names rank before prefixes and substrings; initials
+  (e.g. GM for Google Maps), multi-word prefixes and Latin accents are supported.
+  Search queries are not sent to a server. Clear and close controls are explicit.
+- **Home:** search pill above a tinted dock; optional keyboard on swipe up and
+  search on swipe down. Existing notification-shade gesture remains the default.
+- **Performance:** package/icon discovery runs off the UI thread, with cancelled
+  obsolete reloads. First-run seeding waits for apps to load.
+- **Privacy:** hidden apps are filtered from the Recent Apps home widget as well
+  as the drawer. Hiding is visual organization, not an authenticated private space.
+- **Settings:** horizontally scrollable option rows fit smaller screens. Visual
+  presets preserve navigation and drawer preferences.
+- **Build gate:** GitHub Actions runs search regression tests before publishing.
+
+This is a third-party launcher, not a replacement ROM. System recents, lock-screen
+styling and privileged vendor animations are outside this app's current scope.
+Device smoothness and manufacturer-specific behaviour require real-device testing.
+
+### Phone acceptance checks
+
+1. Install the new debug APK over the previous build without uninstalling. Verify
+   the version in Android App info and confirm home icons/folders are retained.
+2. Open Settings → Home screen. Switch between the two layouts; verify apps remain
+   reachable and the original layout returns when switching back.
+3. Swipe up; try category chips, Recent and A–Z rail. Search by full name, initials
+   and multiple words; clear search; launch using the keyboard Go button.
+4. Try 3, 4 and 5 drawer columns, large system font, and the keyboard visible.
+5. Enable each gesture option and verify it immediately after returning home.
+6. Hide an app and confirm it leaves drawer search and the Recent Apps widget.
+7. Install/uninstall another app while ZenFold is running; verify the list updates.
+8. Test folders, drag/drop, widgets, returning Home, and reboot persistence.
 
 ## Installing the latest build on your phone
 

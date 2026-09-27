@@ -82,7 +82,8 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
 
             // One-time: the default Home and dock on a fresh install, or the older layout carried over.
-            LaunchedEffect(Unit) {
+            LaunchedEffect(apps) {
+                if (apps.isEmpty()) return@LaunchedEffect
                 val defaults = AppRepository.homeApps(this@MainActivity, apps)
                 stylePreferences.seedHomeIfNeeded(
                     homeSeed = { oldPositions, oldRemoved ->

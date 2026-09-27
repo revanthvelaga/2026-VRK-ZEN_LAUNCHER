@@ -2,6 +2,8 @@ package com.zenfold.launcher.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -89,7 +91,7 @@ fun SettingsScreen(
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Launcher style", fontSize = 22.sp, color = style.onBackground)
+                    Text("Make it yours", fontSize = 22.sp, color = style.onBackground)
                     TextButton(onClick = onDone) { Text("Done") }
                 }
             }
@@ -104,7 +106,7 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(style, "Accent color") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         AccentSwatches.all.forEach { color ->
                             Box(
                                 Modifier
@@ -125,7 +127,7 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(style, "Icon shape") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         IconShapeKind.entries.forEach { kind ->
                             Box(
                                 Modifier
@@ -167,9 +169,35 @@ fun SettingsScreen(
 
             item {
                 SettingsSection(style, "Home screen") {
+                    ChoiceRow(style, "Home + app drawer", !style.showAppPages) {
+                        onChange(style.copy(showAppPages = false))
+                    }
+                    ChoiceRow(style, "Home + app pages + drawer", style.showAppPages) {
+                        onChange(style.copy(showAppPages = true))
+                    }
+                    Text("Switch layouts without losing your home icons or folders.", fontSize = 12.sp, color = style.onSurfaceVariant)
+                    ToggleRow(style, "Search button above dock", style.showSearchPill) {
+                        onChange(style.copy(showSearchPill = it))
+                    }
                     ToggleRow(style, "Labels under icons", style.showHomeLabels) {
                         onChange(style.copy(showHomeLabels = it))
                     }
+                }
+            }
+
+            item {
+                SettingsSection(style, "App drawer & gestures") {
+                    Text("Apps per row", fontSize = 13.sp, color = style.onBackground)
+                    SegmentedRow(style, listOf(3, 4, 5), style.drawerColumns, { "$it" }) {
+                        onChange(style.copy(drawerColumns = it))
+                    }
+                    ToggleRow(style, "Keyboard on swipe up", style.searchOnSwipe) {
+                        onChange(style.copy(searchOnSwipe = it))
+                    }
+                    ToggleRow(style, "Swipe down to search", style.swipeDownSearch) {
+                        onChange(style.copy(swipeDownSearch = it))
+                    }
+                    Text("When off, swiping down opens notifications.", fontSize = 12.sp, color = style.onSurfaceVariant)
                 }
             }
 
@@ -360,7 +388,13 @@ private fun PresetRow(
     hazeState: HazeState,
     onApply: (CustomStyle) -> Unit
 ) {
-    val selected = preset == current
+    val selected = preset.copy(
+        showAppPages = current.showAppPages,
+        drawerColumns = current.drawerColumns,
+        searchOnSwipe = current.searchOnSwipe,
+        swipeDownSearch = current.swipeDownSearch,
+        showSearchPill = current.showSearchPill
+    ) == current
     val rowShape = RoundedCornerShape(18.dp)
     Row(
         Modifier
@@ -391,7 +425,7 @@ private fun <T> SegmentedRow(
     label: (T) -> String,
     onSelect: (T) -> Unit
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { option ->
             val isSelected = option == selected
             Box(
@@ -418,7 +452,7 @@ private fun ToggleRow(style: CustomStyle, label: String, checked: Boolean, onChe
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 14.sp, color = style.onBackground)
+        Text(label, fontSize = 14.sp, color = style.onBackground, modifier = Modifier.weight(1f).padding(end = 12.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

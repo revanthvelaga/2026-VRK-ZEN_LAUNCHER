@@ -93,6 +93,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -143,7 +144,7 @@ private sealed interface HomeCell {
 }
 
 // Page dots + dock, drawn over the bottom of every home page; pages leave this much room.
-private val DOCK_AREA_HEIGHT = 112.dp
+private val DOCK_AREA_HEIGHT = 140.dp
 
 private fun lerp(start: Float, stop: Float, fraction: Float) = start + (stop - start) * fraction
 
@@ -177,6 +178,7 @@ fun HomeScreen(
     onRemoveTask: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     var focusSearch by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -235,8 +237,8 @@ fun HomeScreen(
             (freePx / rowPx).toInt().coerceIn(gridSpec.rows, 8)
         }
     }
-    val appPages = remember(visibleApps, onHome, dockPackages, gridSpec, appPageRows) {
-        visibleApps
+    val appPages = remember(visibleApps, onHome, dockPackages, gridSpec, appPageRows, style.showAppPages) {
+        if (!style.showAppPages) emptyList() else visibleApps
             .filterNot { it.packageName in onHome || it.packageName in dockPackages }
             .sortedBy { it.label.lowercase() }
             .chunked(gridSpec.columns * appPageRows)
@@ -337,11 +339,12 @@ fun HomeScreen(
 
     fun openDrawer(withKeyboard: Boolean) {
         query = ""
-        focusSearch = withKeyboard
+        focusSearch = withKeyboard || style.searchOnSwipe
         drawerOpen = true
     }
 
     fun closeDrawer() {
+        keyboard?.hide()
         focusSearch = false
         drawerOpen = false
     }
@@ -399,7 +402,7 @@ fun HomeScreen(
 
     val swipeThreshold = with(density) { 72.dp.toPx() }
     // Swipe up anywhere on Home opens all apps; swipe down pulls the notification shade.
-    val homeSwipes = remember(swipeThreshold) {
+    val homeSwipes = remember(swipeThreshold, style.searchOnSwipe, style.swipeDownSearch) {
         object : NestedScrollConnection {
             var pulledUp = 0f
             var pulledDown = 0f
@@ -415,7 +418,7 @@ fun HomeScreen(
                     pulledDown += available.y
                     if (pulledDown > swipeThreshold) {
                         pulledDown = 0f
-                        expandNotificationShade(context)
+                        if (style.swipeDownSearch) openDrawer(withKeyboard = true) else expandNotificationShade(context)
                     }
                 }
                 return Offset.Zero
@@ -543,7 +546,7 @@ fun HomeScreen(
                                         style = style,
                                         hazeState = hazeState,
                                         now = now,
-                                        apps = apps,
+                                        apps = visibleApps,
                                         recentPackages = recentPackages,
                                         noteText = noteText,
                                         onNoteChange = onNoteChange,
@@ -596,7 +599,7 @@ fun HomeScreen(
                     // Swiping up from the dock always opens all apps, even on a home page
                     // whose own content scrolls (where a swipe up scrolls it first); down
                     // pulls the notification shade, like anywhere else on Home.
-                    .pointerInput(swipeThreshold) {
+                    .pointerInput(swipeThreshold, style.searchOnSwipe, style.swipeDownSearch) {
                         var dragged = 0f
                         detectVerticalDragGestures(onDragStart = { dragged = 0f }) { _, amount ->
                             dragged += amount
@@ -605,7 +608,7 @@ fun HomeScreen(
                                 openDrawer(withKeyboard = false)
                             } else if (dragged > swipeThreshold) {
                                 dragged = 0f
-                                expandNotificationShade(context)
+                                if (style.swipeDownSearch) openDrawer(withKeyboard = true) else expandNotificationShade(context)
                             }
                         }
                     }
@@ -632,7 +635,18 @@ fun HomeScreen(
                     )
                 } else {
                     // Tap (or swipe up) for the A–Z drawer with search.
-                    Icon(
+                    if (style.showSearchPill) {
+                        Row(
+                            Modifier.clip(RoundedCornerShape(24.dp))
+                                .background(style.background.copy(alpha = 0.72f))
+                                .clickable { openDrawer(withKeyboard = true) }
+                                .padding(horizontal = 22.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Search apps", color = style.onBackground, fontSize = 13.sp)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    } else Icon(
                         Icons.Filled.KeyboardArrowUp,
                         contentDescription = "All apps",
                         tint = style.onBackground.copy(alpha = 0.75f),
@@ -671,6 +685,7 @@ fun HomeScreen(
             AppDrawer(
                 apps = visibleApps,
                 suggested = suggested,
+                recent = recentPackages.mapNotNull(visibleByPackage::get),
                 style = style,
                 hazeState = hazeState,
                 badged = badged,
@@ -1092,7 +1107,9 @@ private fun SelectionBar(
             modifier = Modifier.padding(bottom = 10.dp)
         )
         Row(
-            Modifier.fillMaxWidth().height(76.dp),
+            Modifier.fillMaxWidth().height(76.dp)
+            .clip(RoundedCornerShape(30.dp))
+            .background(style.background.copy(alpha = 0.48f)),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1131,7 +1148,9 @@ private fun Dock(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(76.dp),
+            .height(76.dp)
+            .clip(RoundedCornerShape(30.dp))
+            .background(style.background.copy(alpha = 0.48f)),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {

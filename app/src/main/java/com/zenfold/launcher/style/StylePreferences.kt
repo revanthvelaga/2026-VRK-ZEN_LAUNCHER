@@ -22,6 +22,11 @@ import kotlinx.coroutines.flow.map
 private val Context.launcherPrefs by preferencesDataStore(name = "launcher_prefs")
 
 private object Keys {
+    val APP_PAGES = booleanPreferencesKey("app_pages")
+    val DRAWER_COLUMNS = intPreferencesKey("drawer_columns")
+    val SEARCH_ON_SWIPE = booleanPreferencesKey("search_on_swipe")
+    val SWIPE_DOWN_SEARCH = booleanPreferencesKey("swipe_down_search")
+    val SEARCH_PILL = booleanPreferencesKey("search_pill")
     val BACKGROUND = intPreferencesKey("background")
     val SURFACE = intPreferencesKey("surface")
     val ACCENT = intPreferencesKey("accent")
@@ -81,11 +86,21 @@ private fun Preferences.toCustomStyle(): CustomStyle {
         showHomeLabels = this[Keys.SHOW_LABELS] ?: default.showHomeLabels,
         clockCentered = this[Keys.CLOCK_CENTERED] ?: default.clockCentered,
         clockWeight = this[Keys.CLOCK_WEIGHT]?.let { FontWeight(it) } ?: default.clockWeight,
-        statusBarStyle = enumOrDefault(this[Keys.STATUS_BAR], default.statusBarStyle)
+        statusBarStyle = enumOrDefault(this[Keys.STATUS_BAR], default.statusBarStyle),
+        showAppPages = this[Keys.APP_PAGES] ?: true,
+        drawerColumns = (this[Keys.DRAWER_COLUMNS] ?: 4).coerceIn(3, 5),
+        searchOnSwipe = this[Keys.SEARCH_ON_SWIPE] ?: false,
+        swipeDownSearch = this[Keys.SWIPE_DOWN_SEARCH] ?: false,
+        showSearchPill = this[Keys.SEARCH_PILL] ?: true
     )
 }
 
 private fun MutablePreferences.writeCustomStyle(style: CustomStyle) {
+    this[Keys.APP_PAGES] = style.showAppPages
+    this[Keys.DRAWER_COLUMNS] = style.drawerColumns.coerceIn(3, 5)
+    this[Keys.SEARCH_ON_SWIPE] = style.searchOnSwipe
+    this[Keys.SWIPE_DOWN_SEARCH] = style.swipeDownSearch
+    this[Keys.SEARCH_PILL] = style.showSearchPill
     this[Keys.BACKGROUND] = style.background.toArgb()
     this[Keys.SURFACE] = style.surface.toArgb()
     this[Keys.ACCENT] = style.accent.toArgb()
@@ -168,7 +183,16 @@ class StylePreferences(private val context: Context) {
     }
 
     suspend fun applyPreset(style: CustomStyle) {
-        context.launcherPrefs.edit { prefs -> prefs.writeCustomStyle(style) }
+        context.launcherPrefs.edit { prefs ->
+            val current = prefs.toCustomStyle()
+            prefs.writeCustomStyle(style.copy(
+                showAppPages = current.showAppPages,
+                drawerColumns = current.drawerColumns,
+                searchOnSwipe = current.searchOnSwipe,
+                swipeDownSearch = current.swipeDownSearch,
+                showSearchPill = current.showSearchPill
+            ))
+        }
     }
 
     suspend fun update(transform: (CustomStyle) -> CustomStyle) {
