@@ -3,7 +3,9 @@ name: Build debug APK
 # Skips Android Studio entirely: push code, GitHub Actions builds the debug
 # APK, download it from the finished run's "Artifacts" section and install
 # it on your phone (Settings will warn about "unknown sources" the first
-# time — that's expected for a sideloaded debug build).
+# time — that's expected for a sideloaded debug build). Android SDK packages
+# and Gradle dependencies are both cached, so builds after the first one
+# only re-download what actually changed.
 on:
   push:
     branches: ["**"]
