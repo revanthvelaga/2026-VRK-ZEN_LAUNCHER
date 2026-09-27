@@ -251,10 +251,9 @@ fun HomeScreen(
     val pagerState = rememberPagerState(initialPage = 1) { 1 + homePagesState.value + appPagesState.value }
     // Swipe up: the full A–Z drawer with search, sliding up over whatever page you're on.
     var drawerOpen by remember { mutableStateOf(false) }
-    var inboxOpen by remember { mutableStateOf(false) }
 
     val openFolder = openFolderAt?.let { cells[it] as? HomeCell.Folder }
-    val overlayOpen = inboxOpen || drawerOpen || openFolder != null || widgetPickerOpen || homeMenuOpen || appPickerOpen
+    val overlayOpen = drawerOpen || openFolder != null || widgetPickerOpen || homeMenuOpen || appPickerOpen
     val homeContentAlpha by animateFloatAsState(if (overlayOpen) 0f else 1f, label = "homeContentAlpha")
     // The dock and page dots stay on Home and the app pages, fading out toward Today.
     val dockAlpha = remember {
@@ -378,7 +377,6 @@ fun HomeScreen(
 
     // Pressing Home while ZenFold is already showing should drop back to the first home page.
     LaunchedEffect(homeSignal) {
-        inboxOpen = false
         closeDrawer()
         selection = null
         homeMenuOpen = false
@@ -542,12 +540,7 @@ fun HomeScreen(
                             ) {
                                 Spacer(Modifier.height(20.dp))
                                 if (homePage == 0) {
-                                    StudioClock(style, now)
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Text("Notifications", color = style.onBackground, fontSize = 13.sp,
-                                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(style.surface.copy(alpha = 0.9f))
-                                                .clickable { inboxOpen = true }.padding(horizontal = 18.dp, vertical = 14.dp))
-                                    }
+                                    ClockBlock(style, now)
                                     WidgetArea(
                                         enabled = enabledWidgets,
                                         style = style,
@@ -708,8 +701,6 @@ fun HomeScreen(
             )
         }
 
-        if (inboxOpen) NotificationInbox(style, visibleApps, hiddenApps, onLaunch) { inboxOpen = false }
-
         DropTargetsHost(dragState, ::zoneAt, style)
 
         val folderPos = openFolderAt
@@ -817,6 +808,40 @@ private fun expandNotificationShade(context: Context) {
             "This phone blocks that — turn on ZenFold in Settings → Accessibility to use swipe down",
             Toast.LENGTH_LONG
         ).show()
+    }
+}
+
+@Composable
+private fun ClockBlock(style: CustomStyle, now: Long) {
+    val context = LocalContext.current
+    val is24Hour = DateFormat.is24HourFormat(context)
+    val time = remember(now, is24Hour) {
+        SimpleDateFormat(if (is24Hour) "H:mm" else "h:mm", Locale.getDefault()).format(Date(now))
+    }
+    val date = remember(now) { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(Date(now)) }
+    val clockSize = 72 * style.fontScale.scale
+
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = if (style.clockCentered) Alignment.CenterHorizontally else Alignment.Start
+    ) {
+        Text(
+            text = time,
+            style = TextStyle(
+                fontSize = clockSize.sp,
+                lineHeight = (clockSize * 1.1f).sp,
+                fontWeight = style.clockWeight,
+                letterSpacing = (-1).sp,
+                color = style.onBackground,
+                shadow = Shadow(color = style.secondary.copy(alpha = 0.35f), blurRadius = 60f)
+            )
+        )
+        Text(
+            text = date,
+            fontSize = (14 * style.fontScale.scale).sp,
+            fontWeight = FontWeight.Medium,
+            color = style.onSurfaceVariant
+        )
     }
 }
 

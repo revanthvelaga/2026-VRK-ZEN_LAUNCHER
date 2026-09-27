@@ -29,7 +29,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -115,21 +114,7 @@ fun AppIcon(
 @Composable
 fun AppIconImage(app: AppEntry, style: CustomStyle, modifier: Modifier = Modifier) {
     val crystal = style.iconStyle == IconStyle.CRYSTAL
-    val tonal = style.iconStyle == IconStyle.TONAL
-    val glyph = remember(app.icon, tonal) { if (tonal) app.icon.monochromeLayer()?.toLayerBitmap(128)?.asImageBitmap() else null }
     val art = remember(app.packageName, app.icon, crystal) { iconArt(app, crystal) }
-    if (tonal) {
-        Box(modifier.background(style.accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
-            if (glyph != null) Image(glyph, app.label, Modifier.fillMaxSize(0.78f), colorFilter = ColorFilter.tint(style.onBackground))
-            else {
-                // Older apps keep their recognizable silhouette and shading, never a made-up glyph.
-                val original = remember(app.icon) { app.icon.toUnmaskedBitmap(128).asImageBitmap() }
-                Image(original, app.label, Modifier.fillMaxSize(0.74f),
-                    colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }))
-            }
-        }
-        return
-    }
     Box(modifier, contentAlignment = Alignment.Center) {
         when (art) {
             is IconArt.Original -> Image(bitmap = art.bitmap, contentDescription = app.label, modifier = Modifier.fillMaxSize())
