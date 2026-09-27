@@ -1,4 +1,4 @@
-package com.enso.launcher
+package com.zenfold.launcher
 
 import android.content.Context
 import android.content.Intent

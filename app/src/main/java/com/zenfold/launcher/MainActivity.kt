@@ -1,4 +1,4 @@
-package com.enso.launcher
+package com.zenfold.launcher
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -8,8 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.enso.launcher.ui.HomeScreen
-import com.enso.launcher.ui.theme.EnsoTheme
+import com.zenfold.launcher.ui.HomeScreen
+import com.zenfold.launcher.ui.theme.ZenFoldTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            EnsoTheme {
+            ZenFoldTheme {
                 val apps = remember { AppRepository.installedApps(this) }
 
                 HomeScreen(

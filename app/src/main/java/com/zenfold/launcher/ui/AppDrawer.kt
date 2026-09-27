@@ -1,4 +1,4 @@
-package com.enso.launcher.ui
+package com.zenfold.launcher.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,8 +21,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.enso.launcher.AppEntry
-import com.enso.launcher.R
+import com.zenfold.launcher.AppEntry
+import com.zenfold.launcher.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

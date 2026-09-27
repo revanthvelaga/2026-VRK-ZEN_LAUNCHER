@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.enso.launcher"
+    namespace = "com.zenfold.launcher"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.enso.launcher"
+        applicationId = "com.zenfold.launcher"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

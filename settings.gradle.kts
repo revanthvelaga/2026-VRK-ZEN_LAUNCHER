@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Enso Launcher"
+rootProject.name = "ZenFold Launcher"
 include(":app")

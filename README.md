@@ -1,10 +1,11 @@
-# Ensō Launcher
+# ZenFold Launcher
 
 A minimal Android home-screen launcher, built with Kotlin + Jetpack Compose.
-Name and logo are the ensō (円相) — the hand-drawn zen circle — chosen
-because "Zen Launcher" is already taken on the Play Store by two existing
-apps (Cooee's ZEN Launcher, ASUS ZenUI Launcher), which would block
-publishing under that name.
+Named "ZenFold" to keep the word "Zen" — Google Play doesn't block a shared
+app title outright, but publishing under the exact name "Zen Launcher" would
+risk a trademark complaint from existing apps using it (Cooee's ZEN
+Launcher, ASUS ZenUI Launcher). The logo keeps the ensō (円相), the
+hand-drawn zen circle, as its visual motif.
 
 ## What's here so far
 
@@ -16,7 +17,7 @@ publishing under that name.
   grid, and a searchable app drawer as a bottom sheet.
 - `ui/theme/` — a quiet, low-saturation Material3 theme (stone neutrals,
   one moss accent).
-- `res/drawable/ic_enso_*.xml` — the ensō mark, used as the adaptive app
+- `res/drawable/ic_zenfold_*.xml` — the ensō mark, used as the adaptive app
   icon and as an in-app logo.
 
 This is an early, working skeleton — not yet the full feature set discussed
@@ -41,5 +42,5 @@ This is an early, working skeleton — not yet the full feature set discussed
 - You'll need: a privacy policy URL, a feature graphic, phone screenshots,
   and a content rating questionnaire completed in Play Console.
 - Double-check `applicationId` in `app/build.gradle.kts`
-  (`com.enso.launcher`) is unique to you before your first upload — Play
+  (`com.zenfold.launcher`) is unique to you before your first upload — Play
   ties an app forever to whatever ID you upload first.

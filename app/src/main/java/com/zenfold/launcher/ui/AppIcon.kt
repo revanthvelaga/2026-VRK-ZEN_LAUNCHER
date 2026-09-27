@@ -1,4 +1,4 @@
-package com.enso.launcher.ui
+package com.zenfold.launcher.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
@@ -15,7 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.enso.launcher.AppEntry
+import com.zenfold.launcher.AppEntry
 
 @Composable
 fun AppIcon(app: AppEntry, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {

@@ -1,4 +1,4 @@
-package com.enso.launcher.ui
+package com.zenfold.launcher.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.enso.launcher.AppEntry
+import com.zenfold.launcher.AppEntry
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale

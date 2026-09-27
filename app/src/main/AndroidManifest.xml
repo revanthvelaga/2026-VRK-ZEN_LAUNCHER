@@ -17,7 +17,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
-        android:theme="@style/Theme.Enso"
+        android:theme="@style/Theme.ZenFold"
         android:supportsRtl="true">
 
         <activity
@@ -25,7 +25,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
-            android:theme="@style/Theme.Enso.Home">
+            android:theme="@style/Theme.ZenFold.Home">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />

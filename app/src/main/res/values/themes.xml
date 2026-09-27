@@ -1,7 +1,7 @@
 <resources>
-    <style name="Theme.Enso" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.ZenFold" parent="android:Theme.Material.Light.NoActionBar" />
 
-    <style name="Theme.Enso.Home" parent="Theme.Enso">
+    <style name="Theme.ZenFold.Home" parent="Theme.ZenFold">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">false</item>
