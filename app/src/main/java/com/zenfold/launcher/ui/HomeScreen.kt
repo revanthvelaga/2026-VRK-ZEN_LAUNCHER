@@ -127,45 +127,54 @@ fun HomeScreen(
     Box(Modifier.fillMaxSize()) {
         Wallpaper(style, hazeState, Modifier.fillMaxSize())
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(swipeUpToOpen)
-                .pointerInput(Unit) { detectTapGestures(onLongPress = { onOpenSettings() }) }
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
+        // Hidden (not just covered) while the drawer is open — Haze only blurs Wallpaper,
+        // so if this stayed on screen it would show through the drawer's glass, unblurred,
+        // on top of the drawer's own content. A real launcher hides home icons the same way.
+        AnimatedVisibility(
+            visible = !drawerOpen,
+            enter = fadeIn(),
+            exit = fadeOut()
         ) {
             Column(
                 Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                    .fillMaxSize()
+                    .nestedScroll(swipeUpToOpen)
+                    .pointerInput(Unit) { detectTapGestures(onLongPress = { onOpenSettings() }) }
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp)
             ) {
-                Spacer(Modifier.height(20.dp))
-                ClockBlock(style, now)
-                WidgetArea(
-                    enabled = enabledWidgets,
-                    style = style,
-                    hazeState = hazeState,
-                    now = now,
-                    apps = apps,
-                    recentPackages = recentPackages,
-                    noteText = noteText,
-                    onNoteChange = onNoteChange,
-                    onLaunch = onLaunch
-                )
-                FavoritesGrid(home.grid, style, onLaunch)
-                Spacer(Modifier.height(8.dp))
-            }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    Spacer(Modifier.height(20.dp))
+                    ClockBlock(style, now)
+                    WidgetArea(
+                        enabled = enabledWidgets,
+                        style = style,
+                        hazeState = hazeState,
+                        now = now,
+                        apps = apps,
+                        recentPackages = recentPackages,
+                        noteText = noteText,
+                        onNoteChange = onNoteChange,
+                        onLaunch = onLaunch
+                    )
+                    FavoritesGrid(home.grid, style, onLaunch)
+                    Spacer(Modifier.height(8.dp))
+                }
 
-            Spacer(Modifier.height(12.dp))
-            SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
-            if (home.dock.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                Dock(home.dock, style, hazeState, onLaunch)
+                SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
+                if (home.dock.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Dock(home.dock, style, hazeState, onLaunch)
+                }
+                Spacer(Modifier.height(10.dp))
             }
-            Spacer(Modifier.height(10.dp))
         }
 
         AnimatedVisibility(
