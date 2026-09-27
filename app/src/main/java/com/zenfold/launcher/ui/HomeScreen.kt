@@ -70,6 +70,7 @@ import com.zenfold.launcher.AppRepository
 import com.zenfold.launcher.GRID_COLUMNS
 import com.zenfold.launcher.GRID_ROWS
 import com.zenfold.launcher.GridPos
+import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.tasks.TaskItem
 import com.zenfold.launcher.widgets.WidgetArea
@@ -92,6 +93,7 @@ fun HomeScreen(
     hiddenHomeApps: Set<String>,
     noteText: String,
     tasks: List<TaskItem>,
+    feedKeys: FeedApiKeys,
     homeSignal: Int,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
@@ -177,6 +179,7 @@ fun HomeScreen(
                     style = style,
                     hazeState = hazeState,
                     tasks = tasks,
+                    feedKeys = feedKeys,
                     onAddTask = onAddTask,
                     onToggleTask = onToggleTask,
                     onRemoveTask = onRemoveTask

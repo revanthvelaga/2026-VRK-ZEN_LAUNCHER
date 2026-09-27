@@ -27,14 +27,33 @@ hand-drawn zen circle, as its visual motif.
   (`widgets/WidgetPickerOverlay`) — full Settings now lives in its own app,
   see below.
 - `ui/TodayPanel.kt` — the page to the left of home (`HorizontalPager`,
-  page 0). Real, first-party sections only: **Tasks** (an add/check-off/
-  remove list, persisted by `tasks/TaskPreferences.kt`), **Calendar**
-  (upcoming events via `CalendarContract.Instances`, gated behind a real
-  `READ_CALENDAR` runtime permission prompt), and **Storage** (actual device
-  usage via `StatFs`, with a link to the system storage settings). No
-  "Mail" card — reading a real inbox needs Gmail/OAuth account integration,
-  a separate project from anything a launcher can do by itself; showing fake
-  mail data would be worse than not having the section.
+  page 0). **Tasks** (an add/check-off/remove list, persisted by
+  `tasks/TaskPreferences.kt`), **Calendar** (upcoming events via
+  `CalendarContract.Instances`, gated behind a real `READ_CALENDAR` runtime
+  permission prompt), **Gold & markets** and **Cricket** (live data once you
+  add your own free API keys in Settings → Feeds — see `feeds/` below; the
+  cards just explain how to add a key until then, they never show fake
+  numbers), **Trending on X** (a static preview list, not live — see why in
+  `feeds/`), and **Storage** (actual device usage via `StatFs`, with a link
+  to the system storage settings). No "Mail" card — reading a real inbox
+  needs Gmail/OAuth account integration, a separate project from anything a
+  launcher can do by itself; showing fake mail data would be worse than not
+  having the section.
+- `feeds/` — `FeedApi.kt` makes the actual network calls (via OkHttp,
+  parsed with `org.json`), one function per provider:
+  `fetchGoldPrice`/goldapi.io, `fetchSensex`/twelvedata.com,
+  `fetchCricketMatches`/cricapi.com. Each call runs straight from the device
+  to that provider using the key you entered — nothing is proxied through
+  us, and nothing is fetched at all until a key exists.
+  `FeedPreferences.kt` persists the three keys in their own DataStore file
+  (`feeds_prefs`); `FeedModels.kt` has the plain data classes. **Trending on
+  X (Twitter) top 10 is deliberately not wired up**: X removed free access
+  to its trends/search endpoints years ago, and the cheapest tier that
+  restores it is a paid developer plan (~$100+/month) — there's no free or
+  legitimate-scraping path, so `TrendingXCard` in `ui/TodayPanel.kt` shows a
+  static example list labeled "Preview only" rather than pretend it's live.
+  If you get paid X API access yourself, that card is the one place to wire
+  a real call in.
 - `ui/AppDrawer.kt` — a full-screen glass drawer drawn in the launcher's own
   window: search field, "Suggested" row of recent apps, and an A–Z rail you
   can tap or drag. Pull down at the top of the list (or press Back/Home) to
@@ -45,8 +64,9 @@ hand-drawn zen circle, as its visual motif.
   other app rather than being reached through a home-screen gesture. Opening
   it lets you pick a named style preset (Zen, Pixel, Samsung, OxygenOS, Mi)
   or tune each piece yourself: accent color, icon shape/style/size, font
-  size, whether home-screen icons show labels, status bar icon color, and
-  which widgets are on.
+  size, whether home-screen icons show labels, status bar icon color, which
+  widgets are on, and (Feeds section) your own goldapi.io / twelvedata.com /
+  cricapi.com API keys for the Today panel's live data cards.
 - `style/` — `LauncherStyle.kt` defines every customizable field
   (`CustomStyle`) and the five presets; `StylePreferences.kt` persists the
   current style and widget selection with Jetpack DataStore, so choices
@@ -107,8 +127,10 @@ Gradle sync before trusting any of this compiles.
 - You'll need a Google Play Developer account (one-time $25 fee).
 - Generate a signed release bundle: `Build → Generate Signed Bundle / APK`.
 - Home-screen replacement apps are allowed, but Play review is stricter
-  about permissions. This project requests `EXPAND_STATUS_BAR` (low-risk)
-  and `READ_CALENDAR` (a dangerous permission — Play's declaration form
+  about permissions. This project requests `EXPAND_STATUS_BAR` (low-risk),
+  `INTERNET`/`ACCESS_NETWORK_STATE` (low-risk — used only to call the
+  gold/Sensex/cricket provider the user configured their own key for), and
+  `READ_CALENDAR` (a dangerous permission — Play's declaration form
   will ask why; "shows the user's own upcoming events in a home-screen
   widget the user opts into" is the honest answer, and the Today panel
   works fine, just without events, if it's never granted).

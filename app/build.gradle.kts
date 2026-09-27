@@ -57,5 +57,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("dev.chrisbanes.haze:haze:0.7.3")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

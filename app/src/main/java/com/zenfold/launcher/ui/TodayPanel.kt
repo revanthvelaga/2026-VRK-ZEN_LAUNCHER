@@ -54,6 +54,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.zenfold.launcher.feeds.CricketMatch
+import com.zenfold.launcher.feeds.FeedApiKeys
+import com.zenfold.launcher.feeds.GoldPrice
+import com.zenfold.launcher.feeds.MarketIndex
+import com.zenfold.launcher.feeds.fetchCricketMatches
+import com.zenfold.launcher.feeds.fetchGoldPrice
+import com.zenfold.launcher.feeds.fetchSensex
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.tasks.TaskItem
 import dev.chrisbanes.haze.HazeState
@@ -64,15 +71,17 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-// The "-1" panel to the left of the home screen: today's tasks, upcoming calendar
-// events, and device storage — real, first-party data, not a news feed. There's no
-// "Mail" section here: reading a real inbox needs Gmail/OAuth account integration,
+// The "-1" panel to the left of the home screen: tasks, calendar, device storage, and
+// (once the user adds their own API keys in Settings → Feeds) gold/Sensex/cricket data.
+// The "Trending on X" card stays a static preview — see TrendingXCard below for why.
+// There's no "Mail" section: reading a real inbox needs Gmail/OAuth account integration,
 // a separate project from anything a launcher can do on its own.
 @Composable
 fun TodayPanel(
     style: CustomStyle,
     hazeState: HazeState,
     tasks: List<TaskItem>,
+    feedKeys: FeedApiKeys,
     onAddTask: (String) -> Unit,
     onToggleTask: (String, Boolean) -> Unit,
     onRemoveTask: (String) -> Unit
@@ -91,6 +100,8 @@ fun TodayPanel(
 
         TasksCard(style, hazeState, tasks, onAddTask, onToggleTask, onRemoveTask)
         CalendarCard(style, hazeState)
+        FeedsCard(style, hazeState, feedKeys)
+        TrendingXCard(style, hazeState)
         StorageCard(style, hazeState)
 
         Spacer(Modifier.height(20.dp))
@@ -323,5 +334,132 @@ private fun StorageCard(style: CustomStyle, hazeState: HazeState) {
                 context.startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
             }
         )
+    }
+}
+
+// Gold and Sensex go through the user's own API keys (Settings → Feeds), straight to
+// goldapi.io / twelvedata.com — nothing is fetched until a key is entered.
+@Composable
+private fun FeedsCard(style: CustomStyle, hazeState: HazeState, keys: FeedApiKeys) {
+    var gold by remember { mutableStateOf<GoldPrice?>(null) }
+    var sensex by remember { mutableStateOf<MarketIndex?>(null) }
+    var cricket by remember { mutableStateOf<List<CricketMatch>?>(null) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(keys) {
+        loaded = false
+        withContext(Dispatchers.IO) {
+            gold = keys.goldApiKey.takeIf { it.isNotBlank() }?.let { fetchGoldPrice(it) }
+            sensex = keys.marketApiKey.takeIf { it.isNotBlank() }?.let { fetchSensex(it) }
+            cricket = keys.cricketApiKey.takeIf { it.isNotBlank() }?.let { fetchCricketMatches(it) }
+        }
+        loaded = true
+    }
+
+    Column(Modifier.card(hazeState)) {
+        CardTitle("Gold & markets", style)
+        Spacer(Modifier.height(10.dp))
+        if (keys.goldApiKey.isBlank() && keys.marketApiKey.isBlank()) {
+            Text(
+                "Add a goldapi.io and Twelve Data key in Settings → Feeds to show live prices here.",
+                fontSize = 13.sp,
+                color = style.onSurfaceVariant
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (keys.goldApiKey.isNotBlank()) {
+                    FeedLine(
+                        label = "Gold (24k)",
+                        value = gold?.let { "₹%.0f/g".format(it.pricePerGram) } ?: if (loaded) "Unavailable" else "Loading…",
+                        style = style
+                    )
+                }
+                if (keys.marketApiKey.isNotBlank()) {
+                    FeedLine(
+                        label = sensex?.name ?: "Sensex",
+                        value = sensex?.let { "%.2f (%+.2f%%)".format(it.value, it.changePercent) }
+                            ?: if (loaded) "Unavailable" else "Loading…",
+                        style = style
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        CardTitle("Cricket", style)
+        Spacer(Modifier.height(10.dp))
+        when {
+            keys.cricketApiKey.isBlank() -> Text(
+                "Add a CricAPI key in Settings → Feeds for live scores.",
+                fontSize = 13.sp,
+                color = style.onSurfaceVariant
+            )
+            !loaded -> Text("Loading…", fontSize = 13.sp, color = style.onSurfaceVariant)
+            cricket.isNullOrEmpty() -> Text("No live matches right now", fontSize = 13.sp, color = style.onSurfaceVariant)
+            else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                cricket!!.forEach { match ->
+                    Column {
+                        Text(
+                            match.name,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = style.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            match.status,
+                            fontSize = 12.sp,
+                            color = style.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeedLine(label: String, value: String, style: CustomStyle) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 14.sp, color = style.onBackground)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = style.onBackground)
+    }
+}
+
+// X (Twitter) pulled its free trends/search access years ago — the cheapest tier that
+// still includes it is a paid developer plan. Until this app is wired to one, this stays
+// a static preview rather than pretending to be live data.
+private val trendingXPlaceholder = listOf(
+    "#Sensex", "#GoldPrice", "#IPL2026", "#Budget2026", "#WorldCup",
+    "#AI", "#Bollywood", "#TechLayoffs", "#ClimateSummit", "#ElectionResults"
+)
+
+@Composable
+private fun TrendingXCard(style: CustomStyle, hazeState: HazeState) {
+    Column(Modifier.card(hazeState)) {
+        CardTitle("Trending on X", style)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Preview only — X has no free trends API, so this list isn't live.",
+            fontSize = 12.sp,
+            color = style.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            trendingXPlaceholder.forEachIndexed { index, tag ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${index + 1}",
+                        fontSize = 12.sp,
+                        color = style.onSurfaceVariant,
+                        modifier = Modifier.width(20.dp)
+                    )
+                    Text(tag, fontSize = 14.sp, color = style.onBackground)
+                }
+            }
+        }
     }
 }

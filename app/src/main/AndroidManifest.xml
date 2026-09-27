@@ -8,6 +8,12 @@
          (shows a "tap to allow" prompt) if the user never grants it. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
 
+    <!-- Today panel's Feeds card: gold/Sensex/cricket calls go straight from the device
+         to the user's own configured provider (goldapi.io / twelvedata.com / cricapi.com),
+         using the API key they entered in Settings — see feeds/FeedApi.kt. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Android 11+ package visibility: required to enumerate installed apps, and to
          find the default dialer/camera/browser/etc. for the dock and home grid. -->
     <queries>

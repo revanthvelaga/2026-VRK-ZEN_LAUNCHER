@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.view.WindowCompat
+import com.zenfold.launcher.feeds.FeedApiKeys
+import com.zenfold.launcher.feeds.FeedPreferences
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.style.StylePreferences
@@ -28,6 +30,7 @@ class MainActivity : ComponentActivity() {
 
     private val stylePreferences by lazy { StylePreferences(applicationContext) }
     private val taskPreferences by lazy { TaskPreferences(applicationContext) }
+    private val feedPreferences by lazy { FeedPreferences(applicationContext) }
 
     // Bumped each time the Home button is pressed while ZenFold is already in front.
     private var homeSignal by mutableIntStateOf(0)
@@ -50,6 +53,7 @@ class MainActivity : ComponentActivity() {
             val homeLayout by stylePreferences.homeLayout.collectAsState(initial = emptyMap())
             val hiddenHomeApps by stylePreferences.hiddenHomeApps.collectAsState(initial = emptySet())
             val tasks by taskPreferences.tasks.collectAsState(initial = emptyList())
+            val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
             val scope = rememberCoroutineScope()
 
             // A launcher has nothing "behind" it: Back on the home page does nothing
@@ -71,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     hiddenHomeApps = hiddenHomeApps,
                     noteText = noteText,
                     tasks = tasks,
+                    feedKeys = feedKeys,
                     homeSignal = homeSignal,
                     onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
                     onMoveApp = { pkg, pos -> scope.launch { stylePreferences.setHomePosition(pkg, pos) } },
