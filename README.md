@@ -175,6 +175,17 @@ screen). It also has not been built or run on a device/emulator from this
 environment (no Android SDK here) — open it in Android Studio and let
 Gradle sync before trusting any of this compiles.
 
+## Installing the latest build on your phone
+
+Every push builds a debug APK in GitHub Actions and publishes it here — open
+this on the phone and install:
+
+https://github.com/revanthvelaga/2026-VRK-ZEN_LAUNCHER/releases/download/latest-debug/ZenFold-debug.apk
+
+Builds are signed with the committed debug key (`app/debug.keystore`), so each
+one installs over the last and keeps your layout; App info → Version shows
+which build you have (1.0.<Actions run number>).
+
 ## Opening it
 
 1. Install **Android Studio** (Koala or newer).

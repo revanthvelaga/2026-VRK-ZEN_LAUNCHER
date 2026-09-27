@@ -1,8 +1,10 @@
 name: Build debug APK
 
 # Skips Android Studio entirely: push code, GitHub Actions builds the debug
-# APK, download it from the finished run's "Artifacts" section and install
-# it on your phone (Settings will warn about "unknown sources" the first
+# APK and publishes it to the "latest-debug" release, so the newest build is
+# always one tap away on the phone (no zip, no login — the repo is public):
+#   https://github.com/revanthvelaga/2026-VRK-ZEN_LAUNCHER/releases/download/latest-debug/ZenFold-debug.apk
+# It's also kept as a run artifact. Install it on your phone (Settings will warn about "unknown sources" the first
 # time — that's expected for a sideloaded debug build). Android SDK packages
 # and Gradle dependencies are both cached, so builds after the first one
 # only re-download what actually changed.
@@ -14,6 +16,10 @@ on:
 concurrency:
   group: build-debug-apk-${{ github.ref }}
   cancel-in-progress: true
+
+# Publishing the release below needs write access to tags and releases.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -76,3 +82,21 @@ jobs:
           name: zenfold-launcher-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # One rolling pre-release whose tag moves to each new build, so the download link
+      # above never changes. (Tag pushes don't match `on.push.branches`, and pushes made
+      # with GITHUB_TOKEN never start workflows, so this can't trigger itself.)
+      - name: Publish APK to the latest-debug release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk ZenFold-debug.apk
+          git tag -f latest-debug
+          git push -f origin refs/tags/latest-debug
+          notes="Newest debug build (version 1.0.${GITHUB_RUN_NUMBER}, ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}). Download ZenFold-debug.apk below and open it on your phone to install."
+          if gh release view latest-debug > /dev/null 2>&1; then
+            gh release edit latest-debug --prerelease --title "Latest debug build" --notes "$notes"
+          else
+            gh release create latest-debug --prerelease --title "Latest debug build" --notes "$notes"
+          fi
+          gh release upload latest-debug ZenFold-debug.apk --clobber
