@@ -1,9 +1,14 @@
 package com.zenfold.launcher.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,16 +17,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toAndroidRect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +48,20 @@ import com.zenfold.launcher.toUnmaskedBitmap
 import kotlin.math.abs
 import kotlin.math.min
 
+/**
+ * Where the last-tapped icon sits on screen, so the app can open zooming out of it the way
+ * MIUI and Pixel do. Set on tap, taken once by MainActivity when it starts the app.
+ */
+object LaunchBounds {
+    private var last: android.graphics.Rect? = null
+
+    fun set(bounds: android.graphics.Rect) {
+        last = bounds
+    }
+
+    fun take(): android.graphics.Rect? = last.also { last = null }
+}
+
 @Composable
 fun AppIcon(
     app: AppEntry,
@@ -44,6 +71,16 @@ fun AppIcon(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // MIUI-style: no ripple, the icon itself sinks a little under your finger and springs back.
+    val scale by animateFloatAsState(
+        if (pressed) 0.86f else 1f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium),
+        label = "iconPress"
+    )
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box {
             AppIconImage(
@@ -51,8 +88,21 @@ fun AppIcon(
                 style,
                 Modifier
                     .size(style.iconSize.sizeDp.dp)
+                    .onGloballyPositioned { bounds = it.boundsInWindow() }
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .clip(style.iconShapeKind.shape)
-                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                    .combinedClickable(
+                        interactionSource = interaction,
+                        indication = null,
+                        onLongClick = onLongClick,
+                        onClick = {
+                            LaunchBounds.set(bounds.toAndroidRect())
+                            onClick()
+                        }
+                    )
             )
             if (badged) NotificationDot(style, Modifier.align(Alignment.TopEnd))
         }

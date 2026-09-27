@@ -22,12 +22,8 @@ data class AppEntry(
 /** What the home screen shows: the glass dock at the bottom, and the icon grid above it. */
 data class HomeApps(val dock: List<AppEntry>, val grid: List<AppEntry>)
 
-/** A cell in the home screen's icon grid — user-movable, not a fixed list order. */
-data class GridPos(val row: Int, val col: Int)
-
-const val GRID_COLUMNS = 4
-const val GRID_ROWS = 4
-private const val GRID_SIZE = GRID_COLUMNS * GRID_ROWS
+/** A cell on one of the home screen's pages — user-movable, not a fixed list order. */
+data class GridPos(val row: Int, val col: Int, val page: Int = 0)
 
 object AppRepository {
 
@@ -54,11 +50,11 @@ object AppRepository {
     }
 
     /**
-     * Dock = the phone's own default dialer, SMS app, camera and browser. Grid = other
-     * everyday defaults (gallery, maps, music...), then recently used apps, then the rest.
-     * Each slot tries the system default first and falls back to well-known packages.
+     * The first-run defaults. Dock = the phone's own default dialer, SMS app, camera and
+     * browser. Grid = other everyday defaults (gallery, maps, music...). Each slot tries the
+     * system default first and falls back to well-known packages.
      */
-    fun homeApps(context: Context, apps: List<AppEntry>, recentPackages: List<String>): HomeApps {
+    fun homeApps(context: Context, apps: List<AppEntry>): HomeApps {
         val pm = context.packageManager
         val byPackage = apps.associateBy { it.packageName }
         fun firstInstalled(candidates: List<String?>): AppEntry? =
@@ -77,7 +73,7 @@ object AppRepository {
         val used = dock.mapTo(mutableSetOf()) { it.packageName }
         val grid = mutableListOf<AppEntry>()
         fun add(entry: AppEntry?) {
-            if (entry != null && grid.size < GRID_SIZE && used.add(entry.packageName)) grid += entry
+            if (entry != null && used.add(entry.packageName)) grid += entry
         }
 
         add(firstInstalled(handlers(pm, category(Intent.CATEGORY_APP_GALLERY)) + "com.google.android.apps.photos"))
@@ -88,9 +84,6 @@ object AppRepository {
         add(firstInstalled(handlers(pm, Intent(AlarmClock.ACTION_SHOW_ALARMS)) + "com.google.android.deskclock"))
         add(firstInstalled(listOf("com.android.vending")))
         add(firstInstalled(handlers(pm, Intent(Settings.ACTION_SETTINGS)) + "com.android.settings"))
-        recentPackages.forEach { add(byPackage[it]) }
-        // Deliberately stops here: the grid holds these defaults plus recents, not
-        // every installed app — GRID_SIZE just caps how many recents can fit.
 
         return HomeApps(dock = dock, grid = grid)
     }

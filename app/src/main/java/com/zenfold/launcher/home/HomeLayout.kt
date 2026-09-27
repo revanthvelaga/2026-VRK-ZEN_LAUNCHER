@@ -1,7 +1,5 @@
 package com.zenfold.launcher.home
 
-import com.zenfold.launcher.GRID_COLUMNS
-import com.zenfold.launcher.GRID_ROWS
 import com.zenfold.launcher.GridPos
 
 /** Something occupying one cell of the home grid: a single app, or a folder of apps. */
@@ -16,12 +14,18 @@ data class HomeApp(override val pos: GridPos, val packageName: String) : HomeIte
 
 data class HomeFolder(override val pos: GridPos, val name: String, override val packages: List<String>) : HomeItem
 
+/** Cells per home page. User-adjustable in Settings. */
+data class GridSpec(val columns: Int, val rows: Int)
+
+val DEFAULT_GRID = GridSpec(columns = 4, rows = 4)
+
 const val DEFAULT_FOLDER_NAME = "Folder"
 
 /**
- * The home grid as an explicit, user-owned list — nothing appears on it unless the user
- * (or the one-time seed) put it there. Every edit is a pure function returning a new list,
- * so the caller just persists whatever comes back.
+ * The home screen as an explicit, user-owned list spread over as many pages as it needs —
+ * nothing appears on it unless the user (or the one-time seed) put it there, and it's
+ * never "full": a new app goes to the first free cell, on a new page if necessary. Every
+ * edit is a pure function returning a new list, so the caller just persists the result.
  */
 object HomeLayout {
 
@@ -31,9 +35,10 @@ object HomeLayout {
     private const val LIST = "\u001D"
 
     fun encode(items: List<HomeItem>): String = items.joinToString(RECORD) { item ->
+        val pos = item.pos
         when (item) {
-            is HomeApp -> listOf("A", item.pos.row, item.pos.col, item.packageName)
-            is HomeFolder -> listOf("F", item.pos.row, item.pos.col, cleanName(item.name), item.packages.joinToString(LIST))
+            is HomeApp -> listOf("AP", pos.page, pos.row, pos.col, item.packageName)
+            is HomeFolder -> listOf("FP", pos.page, pos.row, pos.col, cleanName(item.name), item.packages.joinToString(LIST))
         }.joinToString(FIELD)
     }
 
@@ -42,35 +47,36 @@ object HomeLayout {
         val taken = mutableSetOf<GridPos>()
         return raw.split(RECORD).mapNotNull { record ->
             val parts = record.split(FIELD)
-            val row = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
-            val col = parts.getOrNull(2)?.toIntOrNull() ?: return@mapNotNull null
-            val pos = GridPos(row, col)
-            val item = when {
-                parts[0] == "A" && parts.size == 4 -> HomeApp(pos, parts[3])
-                parts[0] == "F" && parts.size == 5 ->
-                    HomeFolder(pos, parts[3], parts[4].split(LIST).filter { it.isNotEmpty() })
-                        .takeIf { it.packages.isNotEmpty() }
+            // "A"/"F" records predate pages (all on page 0); "AP"/"FP" carry a page number.
+            val paged = parts[0].endsWith("P")
+            val offset = if (paged) 1 else 0
+            val page = if (paged) (parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null) else 0
+            val row = parts.getOrNull(1 + offset)?.toIntOrNull() ?: return@mapNotNull null
+            val col = parts.getOrNull(2 + offset)?.toIntOrNull() ?: return@mapNotNull null
+            val pos = GridPos(row, col, page)
+            val item = when (parts[0].removeSuffix("P")) {
+                "A" -> parts.getOrNull(3 + offset)?.let { HomeApp(pos, it) }
+                "F" -> {
+                    val name = parts.getOrNull(3 + offset) ?: return@mapNotNull null
+                    val packages = parts.getOrNull(4 + offset)?.split(LIST)?.filter { it.isNotEmpty() }.orEmpty()
+                    HomeFolder(pos, name, packages).takeIf { packages.isNotEmpty() }
+                }
                 else -> null
             }
-            item?.takeIf { pos.inGrid() && taken.add(pos) }
+            item?.takeIf { page >= 0 && row >= 0 && col >= 0 && taken.add(pos) }
         }
     }
 
     /**
-     * The first-run grid: apps with a position from the old per-app layout keep it, the rest
-     * fill the remaining cells in order.
+     * The first-run layout: apps with a position from the old single-page layout keep it,
+     * the rest fill the remaining cells in order.
      */
-    fun seed(packages: List<String>, savedPositions: Map<String, GridPos>): List<HomeItem> {
-        val placed = mutableMapOf<GridPos, String>()
-        packages.forEach { pkg ->
-            val pos = savedPositions[pkg]
-            if (pos != null && pos.inGrid() && pos !in placed) placed[pos] = pkg
-        }
-        packages.filterNot { it in placed.values }.forEach { pkg ->
-            val free = allCells().firstOrNull { it !in placed } ?: return@forEach
-            placed[free] = pkg
-        }
-        return placed.map { (pos, pkg) -> HomeApp(pos, pkg) }
+    fun seed(packages: List<String>, savedPositions: Map<String, GridPos>, spec: GridSpec): List<HomeItem> {
+        var items = packages.mapNotNull { pkg ->
+            savedPositions[pkg]?.takeIf { it.row < spec.rows && it.col < spec.columns }?.let { HomeApp(it, pkg) }
+        }.distinctBy { it.pos }
+        packages.filterNot { contains(items, it) }.forEach { pkg -> items = items + HomeApp(firstFreeCell(items, spec), pkg) }
+        return items
     }
 
     /** Drops apps that aren't installed; a folder left with one app becomes that app. */
@@ -84,13 +90,38 @@ object HomeLayout {
         }
     }
 
+    /**
+     * Fits a stored layout to the current grid size: anything outside it (after the grid
+     * shrank) moves to the first free cell, and pages left empty close up.
+     */
+    fun normalize(items: List<HomeItem>, spec: GridSpec): List<HomeItem> {
+        val (fits, overflow) = items.partition { it.pos.row < spec.rows && it.pos.col < spec.columns }
+        var placed = fits
+        overflow.forEach { item -> placed = placed + item.movedTo(firstFreeCell(placed, spec)) }
+        val pageIndex = placed.map { it.pos.page }.distinct().sorted().withIndex().associate { (i, page) -> page to i }
+        return placed.map { it.movedTo(it.pos.copy(page = pageIndex.getValue(it.pos.page))) }
+    }
+
+    fun pageCount(items: List<HomeItem>): Int = (items.maxOfOrNull { it.pos.page } ?: 0) + 1
+
     fun at(items: List<HomeItem>, pos: GridPos): HomeItem? = items.firstOrNull { it.pos == pos }
 
     fun contains(items: List<HomeItem>, packageName: String): Boolean = items.any { packageName in it.packages }
 
-    fun firstFreeCell(items: List<HomeItem>): GridPos? {
+    /** First free cell scanning from page 0 — past the last page if every page is full. */
+    fun firstFreeCell(items: List<HomeItem>, spec: GridSpec): GridPos {
+        var page = 0
+        while (true) {
+            freeCellOnPage(items, spec, page)?.let { return it }
+            page++
+        }
+    }
+
+    private fun freeCellOnPage(items: List<HomeItem>, spec: GridSpec, page: Int): GridPos? {
         val used = items.mapTo(HashSet()) { it.pos }
-        return allCells().firstOrNull { it !in used }
+        return (0 until spec.rows * spec.columns)
+            .map { GridPos(it / spec.columns, it % spec.columns, page) }
+            .firstOrNull { it !in used }
     }
 
     /**
@@ -113,12 +144,17 @@ object HomeLayout {
         }
     }
 
-    /** Null when there's no free cell. An app already on Home (even inside a folder) stays put. */
-    fun addApp(items: List<HomeItem>, packageName: String): List<HomeItem>? {
-        if (contains(items, packageName)) return items
-        val cell = firstFreeCell(items) ?: return null
-        return items + HomeApp(cell, packageName)
+    /** Moves an item to the first free cell of [page] (a new page if it's past the last). Null if that page is full. */
+    fun moveToPage(items: List<HomeItem>, from: GridPos, page: Int, spec: GridSpec): List<HomeItem>? {
+        val item = at(items, from) ?: return items
+        val rest = items.filterNot { it === item }
+        val cell = freeCellOnPage(rest, spec, page) ?: return null
+        return rest + item.movedTo(cell)
     }
+
+    /** An app already on Home (even inside a folder) stays where it is. */
+    fun addApp(items: List<HomeItem>, packageName: String, spec: GridSpec): List<HomeItem> =
+        if (contains(items, packageName)) items else items + HomeApp(firstFreeCell(items, spec), packageName)
 
     fun removeApp(items: List<HomeItem>, packageName: String): List<HomeItem> = items.mapNotNull { item ->
         when {
@@ -134,12 +170,12 @@ object HomeLayout {
         if (item is HomeFolder && item.pos == pos) item.copy(name = cleanName(name)) else item
     }
 
-    /** Takes an app out of a folder into the first free cell. Null when the grid is full. */
-    fun moveOutOfFolder(items: List<HomeItem>, folderPos: GridPos, packageName: String): List<HomeItem>? {
+    /** Takes an app out of a folder, onto the folder's own page if there's room. */
+    fun moveOutOfFolder(items: List<HomeItem>, folderPos: GridPos, packageName: String, spec: GridSpec): List<HomeItem> {
         val folder = at(items, folderPos) as? HomeFolder ?: return items
         if (packageName !in folder.packages) return items
         val without = items.mapNotNull { if (it === folder) folder.without(packageName) else it }
-        val cell = firstFreeCell(without) ?: return null
+        val cell = freeCellOnPage(without, spec, folderPos.page) ?: firstFreeCell(without, spec)
         return without + HomeApp(cell, packageName)
     }
 
@@ -159,9 +195,4 @@ object HomeLayout {
 
     private fun cleanName(name: String): String =
         name.filterNot { it.isISOControl() }.trim().ifEmpty { DEFAULT_FOLDER_NAME }
-
-    private fun GridPos.inGrid(): Boolean = row in 0 until GRID_ROWS && col in 0 until GRID_COLUMNS
-
-    private fun allCells(): List<GridPos> =
-        (0 until GRID_ROWS * GRID_COLUMNS).map { GridPos(it / GRID_COLUMNS, it % GRID_COLUMNS) }
 }

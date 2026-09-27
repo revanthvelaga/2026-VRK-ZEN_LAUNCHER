@@ -59,9 +59,24 @@ fun fetchCricketMatches(apiKey: String): List<CricketMatch>? {
         val data = json.optJSONArray("data") ?: return emptyList()
         (0 until minOf(data.length(), 3)).map { i ->
             val match = data.getJSONObject(i)
+            val teams = match.optJSONArray("teams")
+                ?.let { array -> (0 until array.length()).map { array.getString(it) } }
+                .orEmpty()
+            // Innings are labelled "India Inning 1" etc.; a Test team can have two.
+            val inningsScores = match.optJSONArray("score")
+                ?.let { array -> (0 until array.length()).map { array.getJSONObject(it) } }
+                .orEmpty()
             CricketMatch(
                 name = match.optString("name", "Match"),
-                status = match.optString("status", "")
+                matchType = match.optString("matchType", "").uppercase(),
+                status = match.optString("status", ""),
+                live = match.optBoolean("matchStarted") && !match.optBoolean("matchEnded"),
+                teams = teams.map { team ->
+                    val score = inningsScores
+                        .filter { it.optString("inning").startsWith(team, ignoreCase = true) }
+                        .joinToString(" & ") { "${it.optInt("r")}/${it.optInt("w")} (${it.opt("o") ?: 0})" }
+                    TeamScore(team, score.ifEmpty { null })
+                }
             )
         }
     } catch (e: Exception) {

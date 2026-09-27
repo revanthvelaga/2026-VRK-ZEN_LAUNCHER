@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.feeds.FeedPreferences
+import com.zenfold.launcher.home.DEFAULT_GRID
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.style.StylePreferences
@@ -36,6 +37,7 @@ class SettingsActivity : ComponentActivity() {
             val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
             val apps = rememberInstalledApps()
             val hiddenPackages by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
+            val gridSpec by stylePreferences.gridSpec.collectAsState(initial = DEFAULT_GRID)
             val scope = rememberCoroutineScope()
 
             ZenFoldTheme(style = style) {
@@ -45,6 +47,8 @@ class SettingsActivity : ComponentActivity() {
                     feedKeys = feedKeys,
                     hiddenApps = apps.filter { it.packageName in hiddenPackages },
                     onUnhideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, false) } },
+                    gridSpec = gridSpec,
+                    onGridSpecChange = { spec -> scope.launch { stylePreferences.setGridSpec(spec) } },
                     onApplyPreset = { preset: CustomStyle -> scope.launch { stylePreferences.applyPreset(preset) } },
                     onChange = { next: CustomStyle -> scope.launch { stylePreferences.update { next } } },
                     onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },

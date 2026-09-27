@@ -1,5 +1,6 @@
 package com.zenfold.launcher
 
+import android.app.ActivityOptions
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -17,7 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import com.zenfold.launcher.feeds.FeedApiKeys
 import com.zenfold.launcher.feeds.FeedPreferences
+import com.zenfold.launcher.home.DEFAULT_GRID
 import com.zenfold.launcher.home.HomeLayout
+import com.zenfold.launcher.ui.LaunchBounds
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.style.StylePreferences
@@ -53,19 +56,23 @@ class MainActivity : ComponentActivity() {
             val noteText by stylePreferences.noteText.collectAsState(initial = "")
             val recentPackages by stylePreferences.recentPackages.collectAsState(initial = emptyList())
             val homeItems by stylePreferences.homeItems.collectAsState(initial = emptyList())
+            val gridSpec by stylePreferences.gridSpec.collectAsState(initial = DEFAULT_GRID)
+            val dockPackages by stylePreferences.dockPackages.collectAsState(initial = emptyList())
             val hiddenApps by stylePreferences.hiddenApps.collectAsState(initial = emptySet())
             val tasks by taskPreferences.tasks.collectAsState(initial = emptyList())
             val feedKeys by feedPreferences.apiKeys.collectAsState(initial = FeedApiKeys())
             val scope = rememberCoroutineScope()
 
-            // One-time: the default grid on a fresh install, or the pre-folders layout carried over.
+            // One-time: the default Home and dock on a fresh install, or the older layout carried over.
             LaunchedEffect(Unit) {
-                stylePreferences.seedHomeIfNeeded { oldPositions, oldRemoved, recents ->
-                    val defaults = AppRepository.homeApps(this@MainActivity, apps, recents).grid
-                        .map { it.packageName }
-                        .filterNot { it in oldRemoved }
-                    HomeLayout.seed(defaults, oldPositions)
-                }
+                val defaults = AppRepository.homeApps(this@MainActivity, apps)
+                stylePreferences.seedHomeIfNeeded(
+                    homeSeed = { oldPositions, oldRemoved ->
+                        val grid = defaults.grid.map { it.packageName }.filterNot { it in oldRemoved }
+                        HomeLayout.seed(grid, oldPositions, DEFAULT_GRID)
+                    },
+                    dockSeed = { defaults.dock.map { it.packageName } }
+                )
             }
 
             // A launcher has nothing "behind" it: Back on the home page does nothing
@@ -84,27 +91,40 @@ class MainActivity : ComponentActivity() {
                     enabledWidgets = enabledWidgets,
                     recentPackages = recentPackages,
                     homeItems = homeItems,
+                    gridSpec = gridSpec,
+                    dockPackages = dockPackages,
                     hiddenApps = hiddenApps,
                     noteText = noteText,
                     tasks = tasks,
                     feedKeys = feedKeys,
                     homeSignal = homeSignal,
                     onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
-                    onHomeItemsChange = { items -> scope.launch { stylePreferences.setHomeItems(items) } },
+                    onHomeEdit = { transform -> scope.launch { stylePreferences.editHomeItems(transform) } },
+                    onDockEdit = { transform -> scope.launch { stylePreferences.editDock(transform) } },
                     onHideApp = { pkg -> scope.launch { stylePreferences.setAppHidden(pkg, true) } },
                     onWidgetToggle = { widget, enabled -> scope.launch { stylePreferences.setWidgetEnabled(widget, enabled) } },
                     onAddTask = { text -> scope.launch { taskPreferences.add(text) } },
                     onToggleTask = { id, done -> scope.launch { taskPreferences.setDone(id, done) } },
                     onRemoveTask = { id -> scope.launch { taskPreferences.remove(id) } },
                     onLaunch = { app ->
-                        packageManager.getLaunchIntentForPackage(app.packageName)?.let {
-                            startActivity(it)
+                        packageManager.getLaunchIntentForPackage(app.packageName)?.let { intent ->
+                            startActivity(intent, zoomFromIcon(intent))
                             scope.launch { stylePreferences.recordLaunch(app.packageName) }
                         }
                     }
                 )
             }
         }
+    }
+
+    // The app opens growing out of the icon that was tapped (MIUI/Pixel-style) instead of
+    // the default window slide — and knows where it came from via sourceBounds.
+    private fun zoomFromIcon(intent: Intent): Bundle? {
+        val bounds = LaunchBounds.take()?.takeIf { !it.isEmpty } ?: return null
+        intent.sourceBounds = bounds
+        return ActivityOptions
+            .makeScaleUpAnimation(window.decorView, bounds.left, bounds.top, bounds.width(), bounds.height())
+            .toBundle()
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -15,28 +15,37 @@ hand-drawn zen circle, as its visual motif.
   via `PackageManager`; `ui/InstalledApps.kt` keeps that list live
   (`LauncherApps.Callback`), so apps installed or uninstalled while the
   launcher is running appear/disappear without a restart.
-- `home/HomeLayout.kt` — the home grid as an explicit list the user owns:
-  each cell holds an app or a **folder**. Nothing appears on Home unless you
-  put it there (the one exception: the first launch seeds it with your
-  default gallery/maps/music/calendar... apps, or carries over the older
-  per-app layout). Every edit — move, make folder, add to folder, rename,
-  remove — is a pure function over that list, persisted by
-  `StylePreferences.homeItems`.
-- `ui/HomeScreen.kt` — live clock, widgets, the 4×4 home grid, and a glass
-  search bar + dock (the phone's own default dialer, SMS app, camera and
-  browser). Long-press and drag an icon: onto an empty cell to move it,
-  **onto another app to make a folder** (auto-named from the apps' shared
-  Play Store category — "Games", "Social & Communication"... — else
-  "Folder"), onto a folder to add it. Folders (`ui/Folders.kt`) show a 2×2
-  preview of their first four apps; tap one to open it, tap its title to
-  rename it. Long-press without moving for a menu: the app's own
-  **shortcuts** ("New message", "Compose"...), **Remove from Home**, **App
-  info**, **Uninstall**. Swipe **down** anywhere on Home to pull down the
-  notification shade; swipe up (or tap Search) for all apps. Home sits on a
-  3-page `HorizontalPager`: swipe left for the Today panel (see
-  `ui/TodayPanel.kt`), swipe right — MIUI-style — for every installed app.
-  Long-press *empty* Home space opens a quick widget on/off picker
-  (`widgets/WidgetPickerOverlay`) — full Settings lives in its own app.
+- `home/HomeLayout.kt` — Home as an explicit list the user owns, spread over
+  as many **pages** as it needs: each cell holds an app or a **folder**, and
+  it's never "full" — a new app goes to the first free cell, on a new page
+  if necessary. The grid size is adjustable (Settings → Home grid: 4–5
+  columns, 4–6 rows); apps that no longer fit move to the next free spot.
+  Nothing appears on Home unless you put it there (the one exception: the
+  first launch seeds it with your default gallery/maps/music/calendar...
+  apps). Every edit is a pure function over that list, applied atomically
+  inside one DataStore transaction (`StylePreferences.editHomeItems`), so
+  quick successive edits never overwrite each other.
+- `ui/HomeScreen.kt` — the pager (Today, home pages, all apps), MIUI-style:
+  page dots over a plain dock row at the bottom, no search bar. The **dock**
+  is yours to edit — long-press any app → **Add to dock** (up to 5), or a
+  dock app → **Remove from dock**. Long-press and drag an icon: onto an
+  empty cell to move it, **onto another app to make a folder** (auto-named
+  from the apps' shared Play Store category — "Games", "Social &
+  Communication"... — else "Folder"), onto a folder to add it, **to the top
+  to Remove or Uninstall** it, or **to the screen's edge** to send it to the
+  previous/next page (a new one if needed). Folders (`ui/Folders.kt`) show a
+  2×2 preview of their first four apps; tap to open (they zoom open), tap
+  the title to rename. Long-press without moving for a menu: the app's own
+  **shortcuts** ("New message", "Compose"...), Remove from Home, Add to
+  dock, App info, Uninstall. **Long-press empty space** for the home menu
+  (`ui/HomeEditing.kt`): **Add apps** (every app with a checkbox — ticked =
+  on Home), **Widgets**, **Settings**. Swipe **down** for the notification
+  shade, **up** for all apps.
+- **Motion** — icons sink under your finger and spring back (no ripple),
+  apps open zooming out of the tapped icon (`ActivityOptions`
+  scale-up + `sourceBounds`), home pages shrink/dim slightly while you
+  swipe between them, folders and sheets spring open, and Home's icons zoom
+  back in when you return from an app.
 - **Notification dots** — `notifications/ZenFoldNotificationListener.kt`
   publishes which apps have dot-worthy notifications (skipping ongoing ones
   like music, and channels marked "no dot"), shown on icons in Home,
@@ -45,17 +54,17 @@ hand-drawn zen circle, as its visual motif.
 - `ui/AppActions.kt` — the shared long-press menu. App shortcuts come from
   `LauncherApps`, which Android only lets the *default* Home app read — so
   they appear once ZenFold is set as your launcher.
-- `ui/TodayPanel.kt` — the page to the left of home. **Tasks** (an
-  add/check-off/remove list, persisted by `tasks/TaskPreferences.kt`), a
-  real **Calendar** month grid (prev/next-month arrows, a dot on any day
-  with an event, tap a day to see its events below — backed by
-  `CalendarContract.Instances`, gated behind a real `READ_CALENDAR` runtime
-  permission prompt), **Gold & markets** and **Cricket** (live data once you
-  add your own free API keys in Settings → Feeds — see `feeds/` below; the
-  cards just explain how to add a key until then, they never show fake
-  numbers), **Top tweets** (sample tweet-style content, not live — see why
-  in `feeds/`), and **Storage** (actual device usage via `StatFs`, with a
-  link to the system storage settings). No "Mail" card — reading a real
+- `ui/TodayPanel.kt` — the page to the left of home: a time-of-day
+  greeting; a row of stat tiles (**Gold**, **Sensex** with a green/red
+  change, and device **Storage**); a **cricket scoreboard** (a LIVE badge,
+  each team's runs/wickets/overs, the match status); a real **Calendar**
+  month grid (prev/next-month arrows, a dot on days with events, tap a day
+  for its events — `CalendarContract.Instances`, behind the
+  `READ_CALENDAR` prompt); **Tasks** (persisted by
+  `tasks/TaskPreferences.kt`); and **Top tweets** (sample content, labelled
+  as such, collapsed to 3 — see why in `feeds/`). Market and cricket data
+  only appear with your own free API keys (Settings → Feeds); until then
+  each spot shows a "Set up" button, never fake numbers. No "Mail" card — reading a real
   inbox needs Gmail/OAuth account integration, a separate project from
   anything a launcher can do by itself; showing fake mail data would be
   worse than not having the section.

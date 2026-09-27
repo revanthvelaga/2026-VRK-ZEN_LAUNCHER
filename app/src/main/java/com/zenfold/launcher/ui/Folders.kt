@@ -3,8 +3,14 @@ package com.zenfold.launcher.ui
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +27,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -56,14 +64,25 @@ fun FolderIcon(
     onClick: () -> Unit
 ) {
     val size = style.iconSize.sizeDp.dp
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.86f else 1f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium),
+        label = "folderPress"
+    )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box {
             Column(
                 Modifier
                     .size(size)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
                     .glassTint(style.iconShapeKind.shape)
                     .background(Color.White.copy(alpha = 0.08f))
-                    .clickable(onClick = onClick)
+                    .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                     .padding(size * 0.12f),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
@@ -101,6 +120,11 @@ fun FolderOverlay(
     var title by remember(name) { mutableStateOf(name) }
     var menuFor by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
+    // Zooms open from small, MIUI-style, with a little overshoot.
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow))
+    }
 
     fun saveTitle() {
         if (title.trim() != name) onRename(title)
@@ -109,6 +133,7 @@ fun FolderOverlay(
     Box(
         Modifier
             .fillMaxSize()
+            .graphicsLayer { alpha = appear.value.coerceIn(0f, 1f) }
             .background(Color.Black.copy(alpha = 0.25f))
             .pointerInput(Unit) {
                 detectTapGestures {
@@ -122,6 +147,11 @@ fun FolderOverlay(
             Modifier
                 .padding(horizontal = 24.dp)
                 .fillMaxWidth()
+                .graphicsLayer {
+                    val s = 0.6f + 0.4f * appear.value
+                    scaleX = s
+                    scaleY = s
+                }
                 .glass(hazeState, RoundedCornerShape(32.dp))
                 // Swallows taps so they don't reach the scrim behind and close the folder.
                 .pointerInput(Unit) { detectTapGestures { } }

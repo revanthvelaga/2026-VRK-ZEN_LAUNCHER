@@ -45,6 +45,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zenfold.launcher.feeds.FeedApiKeys
+import com.zenfold.launcher.home.GridSpec
 import com.zenfold.launcher.style.AccentSwatches
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.FontScale
@@ -64,6 +65,8 @@ fun SettingsScreen(
     feedKeys: FeedApiKeys,
     hiddenApps: List<AppEntry>,
     onUnhideApp: (String) -> Unit,
+    gridSpec: GridSpec,
+    onGridSpecChange: (GridSpec) -> Unit,
     onApplyPreset: (CustomStyle) -> Unit,
     onChange: (CustomStyle) -> Unit,
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
@@ -186,6 +189,24 @@ fun SettingsScreen(
                             onWidgetToggle(widget, checked)
                         }
                     }
+                }
+            }
+
+            item {
+                SettingsSection(style, "Home grid") {
+                    Text("Columns", fontSize = 13.sp, color = style.onBackground)
+                    SegmentedRow(style, listOf(4, 5), gridSpec.columns, { "$it" }) {
+                        onGridSpecChange(gridSpec.copy(columns = it))
+                    }
+                    Text("Rows per page", fontSize = 13.sp, color = style.onBackground)
+                    SegmentedRow(style, listOf(4, 5, 6), gridSpec.rows, { "$it" }) {
+                        onGridSpecChange(gridSpec.copy(rows = it))
+                    }
+                    Text(
+                        "Apps that no longer fit move to the next free spot — nothing is removed.",
+                        fontSize = 12.sp,
+                        color = style.onSurfaceVariant
+                    )
                 }
             }
 

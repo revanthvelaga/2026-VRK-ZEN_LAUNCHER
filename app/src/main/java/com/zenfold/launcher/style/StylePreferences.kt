@@ -12,6 +12,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.zenfold.launcher.GridPos
+import com.zenfold.launcher.home.DEFAULT_GRID
+import com.zenfold.launcher.home.GridSpec
 import com.zenfold.launcher.home.HomeItem
 import com.zenfold.launcher.home.HomeLayout
 import com.zenfold.launcher.widgets.WidgetType
@@ -45,7 +47,12 @@ private object Keys {
     val HIDDEN_HOME = stringPreferencesKey("hidden_home")
     val HOME_ITEMS = stringPreferencesKey("home_items")
     val HIDDEN_APPS = stringPreferencesKey("hidden_apps")
+    val GRID_COLUMNS = intPreferencesKey("grid_columns")
+    val GRID_ROWS = intPreferencesKey("grid_rows")
+    val DOCK = stringPreferencesKey("dock")
 }
+
+const val MAX_DOCK_APPS = 5
 
 private const val MAX_RECENTS = 8
 
@@ -109,6 +116,26 @@ class StylePreferences(private val context: Context) {
     val recentPackages = context.launcherPrefs.data.map { it.toRecentPackages() }
     val homeItems = context.launcherPrefs.data.map { prefs -> prefs[Keys.HOME_ITEMS]?.let(HomeLayout::decode) ?: emptyList() }
     val hiddenApps = context.launcherPrefs.data.map { it.toPackageSet(Keys.HIDDEN_APPS) }
+    val gridSpec = context.launcherPrefs.data.map { prefs ->
+        GridSpec(
+            columns = prefs[Keys.GRID_COLUMNS] ?: DEFAULT_GRID.columns,
+            rows = prefs[Keys.GRID_ROWS] ?: DEFAULT_GRID.rows
+        )
+    }
+    val dockPackages = context.launcherPrefs.data.map { prefs -> prefs.toPackageList(Keys.DOCK) }
+
+    suspend fun setGridSpec(spec: GridSpec) {
+        context.launcherPrefs.edit { prefs ->
+            prefs[Keys.GRID_COLUMNS] = spec.columns
+            prefs[Keys.GRID_ROWS] = spec.rows
+        }
+    }
+
+    suspend fun editDock(transform: (List<String>) -> List<String>) {
+        context.launcherPrefs.edit { prefs ->
+            prefs[Keys.DOCK] = transform(prefs.toPackageList(Keys.DOCK)).distinct().take(MAX_DOCK_APPS).joinToString(",")
+        }
+    }
 
     suspend fun applyPreset(style: CustomStyle) {
         context.launcherPrefs.edit { prefs -> prefs.writeCustomStyle(style) }
@@ -141,21 +168,31 @@ class StylePreferences(private val context: Context) {
         }
     }
 
-    suspend fun setHomeItems(items: List<HomeItem>) {
-        context.launcherPrefs.edit { prefs -> prefs[Keys.HOME_ITEMS] = HomeLayout.encode(items) }
+    /**
+     * Applies [transform] to the stored layout inside one DataStore transaction, so rapid
+     * edits (ticking several apps in a row) each build on the last instead of racing.
+     */
+    suspend fun editHomeItems(transform: (List<HomeItem>) -> List<HomeItem>) {
+        context.launcherPrefs.edit { prefs ->
+            val current = prefs[Keys.HOME_ITEMS]?.let(HomeLayout::decode) ?: emptyList()
+            prefs[Keys.HOME_ITEMS] = HomeLayout.encode(transform(current))
+        }
     }
 
     /**
-     * Builds the home grid once — from the pre-folders layout if there is one, else the
-     * defaults — and never again: after this, only the user decides what's on Home.
+     * Builds Home and the dock once — Home from the pre-folders layout if there is one,
+     * else the defaults — and never again: after this, only the user decides what's there.
      */
     suspend fun seedHomeIfNeeded(
-        seed: (oldPositions: Map<String, GridPos>, oldRemoved: Set<String>, recents: List<String>) -> List<HomeItem>
+        homeSeed: (oldPositions: Map<String, GridPos>, oldRemoved: Set<String>) -> List<HomeItem>,
+        dockSeed: () -> List<String>
     ) {
         context.launcherPrefs.edit { prefs ->
             if (prefs[Keys.HOME_ITEMS] == null) {
-                val items = seed(prefs.toHomeLayout(), prefs.toPackageSet(Keys.HIDDEN_HOME), prefs.toRecentPackages())
-                prefs[Keys.HOME_ITEMS] = HomeLayout.encode(items)
+                prefs[Keys.HOME_ITEMS] = HomeLayout.encode(homeSeed(prefs.toHomeLayout(), prefs.toPackageSet(Keys.HIDDEN_HOME)))
+            }
+            if (prefs[Keys.DOCK] == null) {
+                prefs[Keys.DOCK] = dockSeed().take(MAX_DOCK_APPS).joinToString(",")
             }
         }
     }
@@ -169,6 +206,7 @@ class StylePreferences(private val context: Context) {
                 prefs[Keys.HOME_ITEMS]?.let { raw ->
                     prefs[Keys.HOME_ITEMS] = HomeLayout.encode(HomeLayout.removeApp(HomeLayout.decode(raw), packageName))
                 }
+                prefs[Keys.DOCK]?.let { prefs[Keys.DOCK] = (prefs.toPackageList(Keys.DOCK) - packageName).joinToString(",") }
             } else {
                 current -= packageName
             }
@@ -180,8 +218,10 @@ class StylePreferences(private val context: Context) {
 private fun Preferences.toRecentPackages(): List<String> =
     this[Keys.RECENTS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
 
-private fun Preferences.toPackageSet(key: Preferences.Key<String>): Set<String> =
-    this[key]?.split(",")?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+private fun Preferences.toPackageSet(key: Preferences.Key<String>): Set<String> = toPackageList(key).toSet()
+
+private fun Preferences.toPackageList(key: Preferences.Key<String>): List<String> =
+    this[key]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
 
 private fun Preferences.toHomeLayout(): Map<String, GridPos> {
     val raw = this[Keys.HOME_LAYOUT] ?: return emptyMap()
