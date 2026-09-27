@@ -22,6 +22,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +36,8 @@ import com.zenfold.launcher.style.IconSize
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.widgets.WidgetType
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeChild
 
 @Composable
 fun SettingsScreen(
@@ -45,7 +48,10 @@ fun SettingsScreen(
     onWidgetToggle: (WidgetType, Boolean) -> Unit,
     onDone: () -> Unit
 ) {
-    Box(Modifier.fillMaxSize().background(style.background)) {
+    val hazeState = remember { HazeState() }
+
+    Box(Modifier.fillMaxSize()) {
+        Wallpaper(style, hazeState, Modifier.fillMaxSize())
         LazyColumn(
             Modifier.fillMaxSize().padding(top = 56.dp, start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(28.dp)
@@ -60,7 +66,7 @@ fun SettingsScreen(
             item {
                 SettingsSection(style, "Presets") {
                     StylePresets.presets.forEach { (launcherStyle, preset) ->
-                        PresetRow(launcherStyle.displayName, launcherStyle.tagline, preset, style, onApplyPreset)
+                        PresetRow(launcherStyle.displayName, launcherStyle.tagline, preset, style, hazeState, onApplyPreset)
                     }
                 }
             }
@@ -166,14 +172,17 @@ private fun PresetRow(
     tagline: String,
     preset: CustomStyle,
     current: CustomStyle,
+    hazeState: HazeState,
     onApply: (CustomStyle) -> Unit
 ) {
     val selected = preset == current
+    val rowShape = RoundedCornerShape(18.dp)
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(preset.surface.copy(alpha = if (selected) 0.9f else 0.5f))
+            .clip(rowShape)
+            .hazeChild(state = hazeState, shape = rowShape)
+            .background(preset.surface.copy(alpha = if (selected) 0.55f else 0.3f))
             .clickable { onApply(preset) }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically

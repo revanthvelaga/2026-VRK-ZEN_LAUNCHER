@@ -31,12 +31,27 @@ hand-drawn zen circle, as its visual motif.
   home screen) is a separate, larger piece of work.
 - `ui/theme/Theme.kt` — builds the Material3 color scheme from whatever
   `CustomStyle` is active, rather than a fixed palette.
-- `res/drawable/ic_zenfold_*.xml` — the ensō mark, used as the adaptive app
-  icon and as an in-app logo.
+- `ui/Wallpaper.kt` — a soft two-glow gradient (in the active style's own
+  accent/secondary colors) drawn behind the home screen and Settings. It
+  exists specifically to give the blur below something with real detail to
+  blur — a flat color blurs into itself.
+- Real backdrop blur via [Haze](https://github.com/chrisbanes/haze)
+  (`dev.chrisbanes.haze:haze`, pinned to `0.7.3` in
+  `app/build.gradle.kts` — check Maven Central / the project's releases
+  page and bump this if that version's been pulled). `Wallpaper` is the
+  blur source (`Modifier.haze(state)`); the home-screen widget cards and
+  the preset rows in Settings are the blurred glass surfaces
+  (`Modifier.hazeChild(state, shape)`). Haze degrades gracefully on
+  pre-Android 13 devices (tint only, no blur) rather than crashing.
+  **Not yet extended to** the app drawer's bottom sheet — Compose's
+  `ModalBottomSheet` renders through its own overlay, and wiring Haze
+  through that boundary wasn't verified here.
 
 This is an early, working skeleton — not yet the full feature set discussed
 (gesture navigation, real third-party widget hosting, hidden space, lock
-screen).
+screen). It also has not been built or run on a device/emulator from this
+environment (no Android SDK here) — open it in Android Studio and let
+Gradle sync before trusting any of this compiles.
 
 ## Opening it
 

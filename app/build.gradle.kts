@@ -59,5 +59,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("dev.chrisbanes.haze:haze:0.7.3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

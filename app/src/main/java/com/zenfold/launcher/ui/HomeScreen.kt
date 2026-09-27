@@ -31,6 +31,7 @@ import com.zenfold.launcher.AppEntry
 import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.widgets.WidgetArea
 import com.zenfold.launcher.widgets.WidgetType
+import dev.chrisbanes.haze.HazeState
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -48,6 +49,7 @@ fun HomeScreen(
 ) {
     var drawerOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
+    val hazeState = remember { HazeState() }
 
     // First run: everyone starts with nothing pinned but the first few apps,
     // so the home screen is never empty. A real build persists the user's
@@ -57,9 +59,9 @@ fun HomeScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(style.background)
             .combinedClickable(onClick = {}, onLongClick = onOpenSettings)
     ) {
+        Wallpaper(style, hazeState, Modifier.fillMaxSize())
         Column(
             Modifier
                 .fillMaxSize()
@@ -67,7 +69,7 @@ fun HomeScreen(
         ) {
             ClockBlock(style)
             Spacer(Modifier.height(24.dp))
-            WidgetArea(enabledWidgets, style, noteText, onNoteChange)
+            WidgetArea(enabledWidgets, style, hazeState, noteText, onNoteChange)
             Spacer(Modifier.height(24.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),

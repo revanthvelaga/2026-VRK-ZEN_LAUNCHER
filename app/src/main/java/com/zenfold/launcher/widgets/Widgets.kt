@@ -16,6 +16,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zenfold.launcher.style.CustomStyle
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeChild
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -31,6 +33,7 @@ enum class WidgetType(val id: String, val title: String) {
 fun WidgetArea(
     enabled: Set<WidgetType>,
     style: CustomStyle,
+    hazeState: HazeState,
     noteText: String,
     onNoteChange: (String) -> Unit
 ) {
@@ -38,20 +41,26 @@ fun WidgetArea(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (WidgetType.GLANCE in enabled) GlanceWidget(style)
-        if (WidgetType.CALENDAR in enabled) CalendarWidget(style)
-        if (WidgetType.NOTE in enabled) NoteWidget(style, noteText, onNoteChange)
+        if (WidgetType.GLANCE in enabled) GlanceWidget(style, hazeState)
+        if (WidgetType.CALENDAR in enabled) CalendarWidget(style, hazeState)
+        if (WidgetType.NOTE in enabled) NoteWidget(style, hazeState, noteText, onNoteChange)
     }
 }
 
-private fun widgetCardModifier(style: CustomStyle) = Modifier
+private val widgetShape = RoundedCornerShape(20.dp)
+
+// hazeChild draws a real-time blur of whatever sits behind (the Wallpaper's
+// glow blobs, marked with .haze() in HomeScreen); the translucent background
+// on top of it is the tint, same as the earlier HTML mockup's .glass class.
+private fun widgetCardModifier(style: CustomStyle, hazeState: HazeState) = Modifier
     .fillMaxWidth()
-    .background(style.surface.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+    .hazeChild(state = hazeState, shape = widgetShape)
+    .background(style.surface.copy(alpha = 0.35f), widgetShape)
     .padding(16.dp)
 
 @Composable
-private fun GlanceWidget(style: CustomStyle) {
-    Row(widgetCardModifier(style), horizontalArrangement = Arrangement.SpaceBetween) {
+private fun GlanceWidget(style: CustomStyle, hazeState: HazeState) {
+    Row(widgetCardModifier(style, hazeState), horizontalArrangement = Arrangement.SpaceBetween) {
         Column {
             Text("24° Clear", fontSize = 15.sp, color = style.onBackground)
             Text("High 27° · Low 18°", fontSize = 12.sp, color = style.onSurfaceVariant)
@@ -64,17 +73,17 @@ private fun GlanceWidget(style: CustomStyle) {
 }
 
 @Composable
-private fun CalendarWidget(style: CustomStyle) {
+private fun CalendarWidget(style: CustomStyle, hazeState: HazeState) {
     val today = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(Calendar.getInstance().time) }
-    Column(widgetCardModifier(style)) {
+    Column(widgetCardModifier(style, hazeState)) {
         Text("Today", fontSize = 12.sp, color = style.onSurfaceVariant)
         Text(today, fontSize = 16.sp, color = style.onBackground)
     }
 }
 
 @Composable
-private fun NoteWidget(style: CustomStyle, text: String, onTextChange: (String) -> Unit) {
-    Column(widgetCardModifier(style)) {
+private fun NoteWidget(style: CustomStyle, hazeState: HazeState, text: String, onTextChange: (String) -> Unit) {
+    Column(widgetCardModifier(style, hazeState)) {
         Text("Note", fontSize = 12.sp, color = style.onSurfaceVariant)
         BasicTextField(
             value = text,
