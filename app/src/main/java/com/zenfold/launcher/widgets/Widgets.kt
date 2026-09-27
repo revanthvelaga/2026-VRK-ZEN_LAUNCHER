@@ -1,6 +1,7 @@
 package com.zenfold.launcher.widgets
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,12 +11,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zenfold.launcher.AppEntry
+import com.zenfold.launcher.notifications.ZenFoldNotificationListener
 import com.zenfold.launcher.style.CustomStyle
+import com.zenfold.launcher.ui.AppIcon
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeChild
 import java.text.SimpleDateFormat
@@ -26,7 +34,9 @@ import java.util.Locale
 enum class WidgetType(val id: String, val title: String) {
     GLANCE("glance", "Glance"),
     CALENDAR("calendar", "Calendar"),
-    NOTE("note", "Note")
+    NOTE("note", "Note"),
+    RECENTS("recents", "Recent apps"),
+    NOTIFICATIONS("notifications", "Notifications")
 }
 
 @Composable
@@ -34,8 +44,11 @@ fun WidgetArea(
     enabled: Set<WidgetType>,
     style: CustomStyle,
     hazeState: HazeState,
+    apps: List<AppEntry>,
+    recentPackages: List<String>,
     noteText: String,
-    onNoteChange: (String) -> Unit
+    onNoteChange: (String) -> Unit,
+    onLaunch: (AppEntry) -> Unit
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -44,6 +57,8 @@ fun WidgetArea(
         if (WidgetType.GLANCE in enabled) GlanceWidget(style, hazeState)
         if (WidgetType.CALENDAR in enabled) CalendarWidget(style, hazeState)
         if (WidgetType.NOTE in enabled) NoteWidget(style, hazeState, noteText, onNoteChange)
+        if (WidgetType.RECENTS in enabled) RecentsWidget(style, hazeState, apps, recentPackages, onLaunch)
+        if (WidgetType.NOTIFICATIONS in enabled) NotificationsWidget(style, hazeState)
     }
 }
 
@@ -91,5 +106,95 @@ private fun NoteWidget(style: CustomStyle, hazeState: HazeState, text: String, o
             textStyle = TextStyle(fontSize = 14.sp, color = style.onBackground),
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
         )
+    }
+}
+
+// Recently launched apps, tracked by StylePreferences.recordLaunch — not the
+// system Overview/Recents screen, which a third-party launcher can't host.
+@Composable
+private fun RecentsWidget(
+    style: CustomStyle,
+    hazeState: HazeState,
+    apps: List<AppEntry>,
+    recentPackages: List<String>,
+    onLaunch: (AppEntry) -> Unit
+) {
+    val recentApps = remember(apps, recentPackages) {
+        recentPackages.mapNotNull { pkg -> apps.find { it.packageName == pkg } }
+    }
+    Column(widgetCardModifier(style, hazeState)) {
+        Text("Recent apps", fontSize = 12.sp, color = style.onSurfaceVariant)
+        if (recentApps.isEmpty()) {
+            Text(
+                "Nothing opened yet",
+                fontSize = 13.sp,
+                color = style.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        } else {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                recentApps.take(6).forEach { app ->
+                    AppIcon(app, style = style, showLabel = false, onClick = { onLaunch(app) })
+                }
+            }
+        }
+    }
+}
+
+// Previews of active system notifications. Needs the user to grant
+// notification-listener access from Settings first (Android doesn't offer a
+// runtime dialog for this) — shows a prompt in place of the list until then.
+@Composable
+private fun NotificationsWidget(style: CustomStyle, hazeState: HazeState) {
+    val context = LocalContext.current
+    val enabled = ZenFoldNotificationListener.isEnabled(context)
+    val previews by ZenFoldNotificationListener.previews.collectAsState()
+
+    Column(widgetCardModifier(style, hazeState)) {
+        Text("Notifications", fontSize = 12.sp, color = style.onSurfaceVariant)
+        when {
+            !enabled -> Text(
+                "Tap to allow notification access",
+                fontSize = 13.sp,
+                color = style.onBackground,
+                modifier = Modifier
+                    .padding(top = 6.dp)
+                    .clickable { ZenFoldNotificationListener.openSettings(context) }
+            )
+            previews.isEmpty() -> Text(
+                "No notifications",
+                fontSize = 13.sp,
+                color = style.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            else -> Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 6.dp)
+            ) {
+                previews.take(3).forEach { preview ->
+                    Column {
+                        Text(
+                            preview.title.ifBlank { preview.packageName },
+                            fontSize = 13.sp,
+                            color = style.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (preview.text.isNotBlank()) {
+                            Text(
+                                preview.text,
+                                fontSize = 12.sp,
+                                color = style.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

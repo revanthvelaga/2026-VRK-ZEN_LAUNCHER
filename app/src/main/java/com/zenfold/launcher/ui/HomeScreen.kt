@@ -42,6 +42,7 @@ fun HomeScreen(
     apps: List<AppEntry>,
     style: CustomStyle,
     enabledWidgets: Set<WidgetType>,
+    recentPackages: List<String>,
     noteText: String,
     onNoteChange: (String) -> Unit,
     onLaunch: (AppEntry) -> Unit,
@@ -69,7 +70,7 @@ fun HomeScreen(
         ) {
             ClockBlock(style)
             Spacer(Modifier.height(24.dp))
-            WidgetArea(enabledWidgets, style, hazeState, noteText, onNoteChange)
+            WidgetArea(enabledWidgets, style, hazeState, apps, recentPackages, noteText, onNoteChange, onLaunch)
             Spacer(Modifier.height(24.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),

@@ -34,5 +34,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Powers the optional Notifications widget. Inactive until the user
+             grants notification access from Settings; reads titles/text only. -->
+        <service
+            android:name=".notifications.ZenFoldNotificationListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
     </application>
 </manifest>

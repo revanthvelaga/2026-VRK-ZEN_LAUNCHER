@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
             val style by stylePreferences.customStyle.collectAsState(initial = StylePresets.default)
             val enabledWidgets by stylePreferences.enabledWidgets.collectAsState(initial = setOf(WidgetType.GLANCE))
             val noteText by stylePreferences.noteText.collectAsState(initial = "")
+            val recentPackages by stylePreferences.recentPackages.collectAsState(initial = emptyList())
             var showSettings by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
 
@@ -61,11 +62,13 @@ class MainActivity : ComponentActivity() {
                         apps = apps,
                         style = style,
                         enabledWidgets = enabledWidgets,
+                        recentPackages = recentPackages,
                         noteText = noteText,
                         onNoteChange = { text -> scope.launch { stylePreferences.setNoteText(text) } },
                         onLaunch = { app ->
                             packageManager.getLaunchIntentForPackage(app.packageName)?.let {
                                 startActivity(it)
+                                scope.launch { stylePreferences.recordLaunch(app.packageName) }
                             }
                         },
                         onOpenSettings = { showSettings = true }

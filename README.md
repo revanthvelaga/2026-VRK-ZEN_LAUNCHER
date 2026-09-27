@@ -25,10 +25,24 @@ hand-drawn zen circle, as its visual motif.
   current style and widget selection with Jetpack DataStore, so choices
   survive a restart.
 - `widgets/Widgets.kt` — first-party home-screen widgets (Glance, Calendar,
-  Note) that can be added or removed from Settings. This hosts the
-  launcher's *own* widgets, not third-party Android app widgets — real
-  `AppWidgetHost` support (letting other apps' widgets be placed on the
-  home screen) is a separate, larger piece of work.
+  Note, Recent apps, Notifications) that can be added or removed from
+  Settings. This hosts the launcher's *own* widgets, not third-party
+  Android app widgets — real `AppWidgetHost` support (letting other apps'
+  widgets be placed on the home screen) is a separate, larger piece of
+  work. Two of these widgets are worth calling out:
+  - **Recent apps** is *not* Android's system Overview/Recents screen — a
+    regular installed launcher can't host that; it's our own most-recently-
+    launched list, tracked by `StylePreferences.recordLaunch` every time
+    `MainActivity`'s `onLaunch` fires, persisted with DataStore.
+  - **Notifications** reads real system notifications via
+    `notifications/ZenFoldNotificationListener.kt`, a
+    `NotificationListenerService`. Android has no runtime-permission dialog
+    for this — the user has to grant "notification access" by hand in
+    system Settings, which the widget deep-links to
+    (`Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS`) until it's enabled.
+    This is *not* the real pull-down notification shade, which (like
+    Recents) belongs to SystemUI and isn't something a launcher can
+    restyle or replace.
 - `ui/theme/Theme.kt` — builds the Material3 color scheme from whatever
   `CustomStyle` is active, rather than a fixed palette.
 - `ui/Wallpaper.kt` — a soft two-glow gradient (in the active style's own

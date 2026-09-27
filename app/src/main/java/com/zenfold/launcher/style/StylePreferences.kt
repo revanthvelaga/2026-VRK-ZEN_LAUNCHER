@@ -32,7 +32,10 @@ private object Keys {
     val STATUS_BAR = stringPreferencesKey("status_bar")
     val WIDGETS = stringPreferencesKey("widgets")
     val NOTE_TEXT = stringPreferencesKey("note_text")
+    val RECENTS = stringPreferencesKey("recents")
 }
+
+private const val MAX_RECENTS = 8
 
 private inline fun <reified T : Enum<T>> enumOrDefault(name: String?, default: T): T =
     name?.let { stored -> enumValues<T>().firstOrNull { it.name == stored } } ?: default
@@ -83,6 +86,7 @@ class StylePreferences(private val context: Context) {
     val customStyle = context.launcherPrefs.data.map { it.toCustomStyle() }
     val enabledWidgets = context.launcherPrefs.data.map { it.toWidgetSet() }
     val noteText = context.launcherPrefs.data.map { it[Keys.NOTE_TEXT] ?: "" }
+    val recentPackages = context.launcherPrefs.data.map { it.toRecentPackages() }
 
     suspend fun applyPreset(style: CustomStyle) {
         context.launcherPrefs.edit { prefs -> prefs.writeCustomStyle(style) }
@@ -106,4 +110,15 @@ class StylePreferences(private val context: Context) {
     suspend fun setNoteText(text: String) {
         context.launcherPrefs.edit { prefs -> prefs[Keys.NOTE_TEXT] = text }
     }
+
+    suspend fun recordLaunch(packageName: String) {
+        context.launcherPrefs.edit { prefs ->
+            val next = (listOf(packageName) + prefs.toRecentPackages().filterNot { it == packageName })
+                .take(MAX_RECENTS)
+            prefs[Keys.RECENTS] = next.joinToString(",")
+        }
+    }
 }
+
+private fun Preferences.toRecentPackages(): List<String> =
+    this[Keys.RECENTS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
