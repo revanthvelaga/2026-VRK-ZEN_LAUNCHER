@@ -8,6 +8,13 @@ import android.content.Intent
 import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -192,23 +199,41 @@ fun HomeScreen(
             .take(4)
     }
 
-    // Pager: 0 = Today, 1..homePages = home pages, last = all apps (swipe right, MIUI-style).
+    // MIUI-style app pages to the right of Home: every app that isn't already on Home or in
+    // the dock, A–Z, a page at a time — so each app lives in exactly one place, and removing
+    // one from Home puts it back here rather than losing it. As many rows as fit the screen.
+    val statusTopPx = WindowInsets.statusBars.getTop(density)
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val appPageRows = remember(rootSize, gridSpec, statusTopPx, navBottomPx) {
+        if (rootSize == IntSize.Zero) {
+            gridSpec.rows
+        } else with(density) {
+            val rowPx = (rootSize.width - 40.dp.toPx()) / gridSpec.columns * 1.3f
+            val freePx = rootSize.height - statusTopPx - navBottomPx - DOCK_AREA_HEIGHT.toPx() - 36.dp.toPx()
+            (freePx / rowPx).toInt().coerceIn(gridSpec.rows, 8)
+        }
+    }
+    val appPages = remember(visibleApps, onHome, dockPackages, gridSpec, appPageRows) {
+        visibleApps
+            .filterNot { it.packageName in onHome || it.packageName in dockPackages }
+            .sortedBy { it.label.lowercase() }
+            .chunked(gridSpec.columns * appPageRows)
+    }
+
+    // Pager: 0 = Today, 1..homePages = home pages, then the app pages (swipe right, MIUI-style).
     val homePages = HomeLayout.pageCount(layout)
     val homePagesState = rememberUpdatedState(homePages)
-    val pagerState = rememberPagerState(initialPage = 1) { homePagesState.value + 2 }
-    val drawerOpen by remember { derivedStateOf { pagerState.currentPage == pagerState.pageCount - 1 } }
+    val appPagesState = rememberUpdatedState(appPages.size)
+    val pagerState = rememberPagerState(initialPage = 1) { 1 + homePagesState.value + appPagesState.value }
+    // Swipe up: the full A–Z drawer with search, sliding up over whatever page you're on.
+    var drawerOpen by remember { mutableStateOf(false) }
 
     val openFolder = openFolderAt?.let { cells[it] as? HomeCell.Folder }
-    val overlayOpen = openFolder != null || widgetPickerOpen || homeMenuOpen || appPickerOpen
+    val overlayOpen = drawerOpen || openFolder != null || widgetPickerOpen || homeMenuOpen || appPickerOpen
     val homeContentAlpha by animateFloatAsState(if (overlayOpen) 0f else 1f, label = "homeContentAlpha")
-    // How "on a home page" the pager is (0 on Today/drawer, 1 on Home) — fades the dock.
+    // The dock and page dots stay on Home and the app pages, fading out toward Today.
     val dockAlpha = remember {
-        derivedStateOf {
-            val position = pagerState.currentPage + pagerState.currentPageOffsetFraction
-            val lastHome = (pagerState.pageCount - 2).toFloat()
-            val outside = maxOf(0f, 1f - position) + maxOf(0f, position - lastHome)
-            (1f - outside).coerceIn(0f, 1f)
-        }
+        derivedStateOf { (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 1f) }
     }
     val dockVisible by remember { derivedStateOf { dockAlpha.value > 0.01f } }
 
@@ -258,7 +283,7 @@ fun HomeScreen(
     fun scrollToHomePage(page: Int) {
         scope.launch {
             // A brand-new page only exists once the edit that created it has been saved.
-            withTimeoutOrNull(1_000) { snapshotFlow { pagerState.pageCount }.first { it > page + 2 } }
+            withTimeoutOrNull(1_000) { snapshotFlow { homePagesState.value }.first { it > page } }
             pagerState.animateScrollToPage(page + 1)
         }
     }
@@ -273,19 +298,14 @@ fun HomeScreen(
     fun openDrawer(withKeyboard: Boolean) {
         query = ""
         focusSearch = withKeyboard
-        scope.launch {
-            val drawer = pagerState.pageCount - 1
-            if (drawer - pagerState.currentPage > 1) pagerState.scrollToPage(drawer - 1)
-            pagerState.animateScrollToPage(drawer)
-        }
+        drawerOpen = true
     }
 
     fun closeDrawer() {
         focusSearch = false
-        scope.launch { pagerState.animateScrollToPage(pagerState.pageCount - 2) }
+        drawerOpen = false
     }
 
-    val statusTopPx = WindowInsets.statusBars.getTop(density)
     val topZoneBottomPx = statusTopPx + with(density) { 88.dp.toPx() }
     val edgePx = with(density) { 28.dp.toPx() }
     fun zoneAt(drag: HomeDrag): DropZone? = when {
@@ -301,7 +321,7 @@ fun HomeScreen(
         when (zoneAt(HomeDrag(from, cell is HomeCell.Folder, pointer))) {
             DropZone.REMOVE -> {
                 edit { HomeLayout.removeAt(it, from) }
-                if (cell is HomeCell.Folder) toast("Folder removed — its apps are still in the app drawer")
+                if (cell is HomeCell.Folder) toast("Folder removed — its apps are back on the app pages")
             }
             DropZone.UNINSTALL -> (cell as? HomeCell.App)?.let { uninstallApp(context, it.app.packageName) }
             DropZone.PREVIOUS_PAGE -> moveToPage(from, from.page - 1)
@@ -314,7 +334,7 @@ fun HomeScreen(
 
     // Pressing Home while ZenFold is already showing should drop back to the first home page.
     LaunchedEffect(homeSignal) {
-        focusSearch = false
+        closeDrawer()
         homeMenuOpen = false
         widgetPickerOpen = false
         appPickerOpen = false
@@ -324,6 +344,10 @@ fun HomeScreen(
     // A folder that stops being a folder (its last-but-one app moved out) closes itself.
     LaunchedEffect(openFolder == null) {
         if (openFolder == null) openFolderAt = null
+    }
+    // Back from Today or an app page returns to Home; the overlays below take priority.
+    BackHandler(enabled = !overlayOpen && pagerState.currentPage != 1) {
+        scope.launch { pagerState.animateScrollToPage(1) }
     }
     BackHandler(enabled = drawerOpen) { closeDrawer() }
     BackHandler(enabled = homeMenuOpen) { homeMenuOpen = false }
@@ -370,6 +394,43 @@ fun HomeScreen(
         )
     }
 
+    // For apps outside Home: the swipe-up drawer and the app pages.
+    val drawerAppActions: (AppEntry) -> List<MenuAction> = { app ->
+        listOfNotNull(
+            MenuAction("Add to Home") { addToHome(app) },
+            MenuAction("Add to dock") { addToDock(app) }.takeIf { app !in dock },
+            MenuAction("Hide app") {
+                onHideApp(app.packageName)
+                toast("${app.label} hidden — unhide it in ZenFold Settings")
+            }
+        )
+    }
+
+    // Shared by home and app pages: MIUI's zoom-in on returning home, fading out under
+    // overlays, swipe up for all apps / down for notifications, long-press for the home
+    // menu, and double-tap to lock.
+    fun Modifier.homePage(): Modifier = this
+        .graphicsLayer {
+            val enter = homeEnter.value
+            scaleX = enter
+            scaleY = enter
+            alpha = homeContentAlpha * ((enter - 0.88f) / 0.12f).coerceIn(0.3f, 1f)
+        }
+        .nestedScroll(homeSwipes)
+        .pointerInput(Unit) {
+            detectTapGestures(
+                onLongPress = { homeMenuOpen = true },
+                onDoubleTap = {
+                    if (!LockScreenService.lockScreen()) {
+                        toast("Turn on “Double-tap to lock” in ZenFold Settings")
+                    }
+                }
+            )
+        }
+        .statusBarsPadding()
+        .navigationBarsPadding()
+        .padding(horizontal = 20.dp)
+
     Box(
         Modifier
             .fillMaxSize()
@@ -395,8 +456,8 @@ fun HomeScreen(
                         alpha = lerp(1f, 0.4f, offset)
                     }
             ) {
-                when (page) {
-                    0 -> TodayPanel(
+                when {
+                    page == 0 -> TodayPanel(
                         style = style,
                         hazeState = hazeState,
                         tasks = tasks,
@@ -404,57 +465,22 @@ fun HomeScreen(
                         onToggleTask = onToggleTask,
                         onRemoveTask = onRemoveTask
                     )
-                    homePages + 1 -> AppDrawer(
-                        apps = visibleApps,
-                        suggested = suggested,
-                        style = style,
-                        hazeState = hazeState,
-                        badged = badged,
-                        query = query,
-                        onQueryChange = { query = it },
-                        focusSearch = focusSearch,
-                        appActions = { app ->
-                            listOfNotNull(
-                                MenuAction("Add to Home") { addToHome(app) },
-                                MenuAction("Add to dock") { addToDock(app) }.takeIf { app !in dock },
-                                MenuAction("Hide app") {
-                                    onHideApp(app.packageName)
-                                    toast("${app.label} hidden — unhide it in ZenFold Settings")
-                                }
-                            )
-                        },
-                        onLaunch = { app ->
-                            onLaunch(app)
-                            closeDrawer()
-                        },
-                        onDismiss = { closeDrawer() }
-                    )
+                    page > homePages -> Column(Modifier.fillMaxSize().homePage()) {
+                        Spacer(Modifier.height(36.dp))
+                        AppsPage(
+                            apps = appPages.getOrElse(page - homePages - 1) { emptyList() },
+                            columns = gridSpec.columns,
+                            style = style,
+                            badged = badged,
+                            appActions = drawerAppActions,
+                            onLaunch = onLaunch,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.height(DOCK_AREA_HEIGHT))
+                    }
                     else -> {
                         val homePage = page - 1
-                        Column(
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    val enter = homeEnter.value
-                                    scaleX = enter
-                                    scaleY = enter
-                                    alpha = homeContentAlpha * ((enter - 0.88f) / 0.12f).coerceIn(0.3f, 1f)
-                                }
-                                .nestedScroll(homeSwipes)
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onLongPress = { homeMenuOpen = true },
-                                        onDoubleTap = {
-                                            if (!LockScreenService.lockScreen()) {
-                                                toast("Turn on “Double-tap to lock” in ZenFold Settings")
-                                            }
-                                        }
-                                    )
-                                }
-                                .statusBarsPadding()
-                                .navigationBarsPadding()
-                                .padding(horizontal = 20.dp)
-                        ) {
+                        Column(Modifier.fillMaxSize().homePage()) {
                             Column(
                                 Modifier
                                     .weight(1f)
@@ -493,7 +519,7 @@ fun HomeScreen(
                                     appActions = homeAppActions,
                                     onRemoveFolder = { pos ->
                                         edit { HomeLayout.removeAt(it, pos) }
-                                        toast("Folder removed — its apps are still in the app drawer")
+                                        toast("Folder removed — its apps are back on the app pages")
                                     }
                                 )
                                 Spacer(Modifier.height(8.dp))
@@ -521,7 +547,8 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                PageIndicator(homePages, (pagerState.currentPage - 1).coerceIn(0, homePages - 1), style)
+                val pageDots = homePages + appPages.size
+                PageIndicator(pageDots, (pagerState.currentPage - 1).coerceIn(0, pageDots - 1), style)
                 Spacer(Modifier.height(10.dp))
                 Dock(
                     apps = dock,
@@ -533,6 +560,31 @@ fun HomeScreen(
                     }
                 )
             }
+        }
+
+        // MIUI's drawer rises from the bottom with a slight overshoot and sinks back down.
+        AnimatedVisibility(
+            visible = drawerOpen,
+            enter = slideInVertically(spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)) { it / 2 } +
+                fadeIn(tween(180)),
+            exit = slideOutVertically(tween(220)) { it / 2 } + fadeOut(tween(180))
+        ) {
+            AppDrawer(
+                apps = visibleApps,
+                suggested = suggested,
+                style = style,
+                hazeState = hazeState,
+                badged = badged,
+                query = query,
+                onQueryChange = { query = it },
+                focusSearch = focusSearch,
+                appActions = drawerAppActions,
+                onLaunch = { app ->
+                    onLaunch(app)
+                    closeDrawer()
+                },
+                onDismiss = { closeDrawer() }
+            )
         }
 
         DropTargetsHost(dragState, ::zoneAt, style)
@@ -829,6 +881,58 @@ private fun HomeGrid(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// One MIUI-style app page: a full grid of apps, same cell size as the home grid. Scrollable
+// only so swipe up/down on it reaches the page's gestures like on Home.
+@Composable
+private fun AppsPage(
+    apps: List<AppEntry>,
+    columns: Int,
+    style: CustomStyle,
+    badged: Set<String>,
+    appActions: (AppEntry) -> List<MenuAction>,
+    onLaunch: (AppEntry) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    BoxWithConstraints(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+        val cellDp = maxWidth / columns
+        val rowDp = cellDp * 1.3f
+        Column {
+            apps.chunked(columns).forEach { row ->
+                Row {
+                    row.forEach { app ->
+                        Box(
+                            Modifier
+                                .size(cellDp, rowDp)
+                                // Like the home grid: a long-press anywhere in the cell is this
+                                // app's, not the empty-space home menu.
+                                .pointerInput(Unit) {
+                                    awaitEachGesture { awaitFirstDown(requireUnconsumed = false).consume() }
+                                },
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            AppIcon(
+                                app,
+                                style = style,
+                                showLabel = style.showHomeLabels,
+                                badged = app.packageName in badged,
+                                onLongClick = { menuFor = app.packageName },
+                                onClick = { onLaunch(app) }
+                            )
+                            AppActionsMenu(
+                                app,
+                                expanded = menuFor == app.packageName,
+                                onDismiss = { menuFor = null },
+                                actions = if (menuFor == app.packageName) appActions(app) else emptyList()
+                            )
                         }
                     }
                 }

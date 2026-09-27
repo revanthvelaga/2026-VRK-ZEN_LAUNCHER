@@ -40,7 +40,13 @@ hand-drawn zen circle, as its visual motif.
   dock, App info, Uninstall. **Long-press empty space** for the home menu
   (`ui/HomeEditing.kt`): **Add apps** (every app with a checkbox — ticked =
   on Home), **Widgets**, **Settings**. Swipe **down** for the notification
-  shade, **up** for all apps.
+  shade, **up** for the all-apps drawer.
+- **App pages (MIUI-style)** — keep swiping right past your home pages and
+  every app that isn't on Home or in the dock is laid out A–Z, a full grid
+  per page (as many rows as fit the screen). So each app lives in exactly
+  one place: **Add to Home** moves it off the app pages, and removing it
+  from Home puts it back — nothing gets lost. The dock and page dots stay
+  put across Home and the app pages; Back returns to Home.
 - **Motion** — icons sink under your finger and spring back (no ripple),
   apps open zooming out of the tapped icon (`ActivityOptions`
   scale-up + `sourceBounds`), home pages shrink/dim slightly while you
@@ -52,11 +58,14 @@ hand-drawn zen circle, as its visual motif.
   folders, the dock and the drawer. Needs notification access — Settings
   shows whether it's on and links to the system toggle.
 - **Other apps' widgets** — `widgets/HostedWidgets.kt` + an `AppWidgetHost`
-  in `MainActivity`: Home menu → Widgets lists every installed widget
-  (clock, weather, Google search...) with **Add**. Android asks once per
-  provider for permission to bind it, then runs the widget's own setup
-  screen if it has one; added widgets sit full-width on the first home page
-  and can be removed from the same sheet.
+  in `MainActivity`: Home menu → Widgets lists every app that offers
+  widgets (clock, weather, Google search, Cricbuzz...), like Android's own
+  picker — tap an app to see its widgets' **preview images** and grid size
+  ("2 × 1"), tap a preview to add it. Previews load only when an app is
+  opened, so the sheet opens instantly. Android asks once per provider for
+  permission to bind it, then runs the widget's own setup screen if it has
+  one; added widgets sit full-width on the first home page and can be
+  removed from the same sheet.
 - **Icon packs** — `icons/IconPacks.kt` finds installed packs (the standard
   ADW/Nova/Apex theme intents) and reads their `appfilter.xml`; pick one in
   Settings → Icon pack and its icons replace each app's own wherever the
@@ -77,30 +86,30 @@ hand-drawn zen circle, as its visual motif.
   month grid (prev/next-month arrows, a dot on days with events, tap a day
   for its events — `CalendarContract.Instances`, behind the
   `READ_CALENDAR` prompt); **Tasks** (persisted by
-  `tasks/TaskPreferences.kt`); and **Top tweets** (sample content, labelled
-  as such, collapsed to 3 — see why in `feeds/`). Market and cricket data
-  only appear with your own free API keys (Settings → Feeds); until then
-  each spot shows a "Set up" button, never fake numbers. No "Mail" card — reading a real
+  `tasks/TaskPreferences.kt`); and **Trending** — the top 10 things people
+  in your country are searching for right now, each with its lead headline.
+  All of it is live with **nothing to set up** — no accounts or API keys —
+  and refreshes every two minutes while the page is open; a feed that
+  can't be reached keeps its last good value. Tap a tile, match or trend
+  to open it. No "Mail" card — reading a real
   inbox needs Gmail/OAuth account integration, a separate project from
   anything a launcher can do by itself; showing fake mail data would be
   worse than not having the section.
-- `feeds/` — `FeedApi.kt` makes the actual network calls (via OkHttp,
-  parsed with `org.json`), one function per provider:
-  `fetchGoldPrice`/goldapi.io, `fetchSensex`/twelvedata.com,
-  `fetchCricketMatches`/cricapi.com. Each call runs straight from the device
-  to that provider using the key you entered — nothing is proxied through
-  us, and nothing is fetched at all until a key exists.
-  `FeedPreferences.kt` persists the three keys in their own DataStore file
-  (`feeds_prefs`); `FeedModels.kt` has the plain data classes. **Top tweets
-  is deliberately not wired to real data**: X removed free access to its
-  trends/search endpoints years ago, and the cheapest tier that restores it
-  is a paid developer plan (~$100+/month) — there's no free or
-  legitimate-scraping path, so `TweetsCard` in `ui/TodayPanel.kt` shows
-  clearly-labeled sample tweets rather than pretend they're live. If you get
-  paid X API access yourself, that card is the one place to wire a real call
-  in.
-- `ui/AppDrawer.kt` — the all-apps page (swipe right from Home, or swipe up
-  / tap Search): search field, "Suggested" row of recent apps, and an A–Z
+- `feeds/` — `FeedApi.kt` makes the network calls (OkHttp; `org.json` and
+  Android's XML pull parser), all to public, keyless feeds, straight from
+  the device: **gold** and **Sensex** from Yahoo Finance's public chart
+  endpoint (COMEX gold × USD→INR, per gram; `^BSESN`), **cricket** from
+  ESPNcricinfo's live-scores RSS, and **trending** from Google Trends'
+  "trending now" RSS for the phone's country (network, then SIM, then
+  language setting). `FeedModels.kt` has the plain data classes. These are
+  unofficial public feeds meant for personal use — fine for your own
+  launcher, but check each provider's terms (or switch to a licensed data
+  API) before shipping this to other people. Pixel's "Google feed" (Discover)
+  isn't available: Google only lets its own approved launchers embed it.
+  X/Twitter has no free feed at all (its API is paid), which is why the
+  Trending card uses Google Trends instead.
+- `ui/AppDrawer.kt` — the all-apps drawer (swipe **up** on Home or an app
+  page; it slides up over the page): search field, "Suggested" row of recent apps, and an A–Z
   rail you can tap or drag. Long-press any app for its shortcuts plus **Add
   to Home** and **Hide app** (hidden apps leave the drawer, search and Home;
   unhide them in Settings → Hidden apps). Pull down at the top of the list
@@ -112,8 +121,8 @@ hand-drawn zen circle, as its visual motif.
   it lets you pick a named style preset (Zen, Pixel, Samsung, OxygenOS, Mi)
   or tune each piece yourself: accent color, icon shape/style/size, font
   size, whether home-screen icons show labels, status bar icon color, which
-  widgets are on, and (Feeds section) your own goldapi.io / twelvedata.com /
-  cricapi.com API keys for the Today panel's live data cards.
+  widgets are on, home grid size, icon pack, double-tap to lock, and
+  hidden apps.
 - `style/` — `LauncherStyle.kt` defines every customizable field
   (`CustomStyle`) and the five presets; `StylePreferences.kt` persists the
   current style and widget selection with Jetpack DataStore, so choices
@@ -175,8 +184,8 @@ Gradle sync before trusting any of this compiles.
 - Generate a signed release bundle: `Build → Generate Signed Bundle / APK`.
 - Home-screen replacement apps are allowed, but Play review is stricter
   about permissions. This project requests `EXPAND_STATUS_BAR` (low-risk),
-  `INTERNET`/`ACCESS_NETWORK_STATE` (low-risk — used only to call the
-  gold/Sensex/cricket provider the user configured their own key for), and
+  `INTERNET`/`ACCESS_NETWORK_STATE` (low-risk — used only for the Today
+  page's public market, cricket and trends feeds), and
   `READ_CALENDAR` (a dangerous permission — Play's declaration form
   will ask why; "shows the user's own upcoming events in a home-screen
   widget the user opts into" is the honest answer, and the Today panel
