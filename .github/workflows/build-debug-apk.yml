@@ -26,10 +26,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # actions/cache's `with.path` can't read the runner's process env directly, only
+      # the workflow `env` context -- so promote ANDROID_HOME into it first.
+      - name: Export Android SDK path
+        run: echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      # Bump this key alongside the platform/build-tools versions below when either
+      # changes, so a stale cache never masks a version bump.
+      - name: Cache Android SDK packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/platforms
+            ${{ env.ANDROID_HOME }}/build-tools
+          key: android-sdk-platform34-buildtools34.0.0
+
       # GitHub's ubuntu-latest runner already ships an Android SDK at $ANDROID_HOME —
       # android-actions/setup-android tries to install the long-removed legacy "tools"
       # package and fails outright, so we drive sdkmanager from that SDK directly instead.
-      # compileSdk in app/build.gradle.kts — bump the platform/build-tools below alongside it.
+      # compileSdk in app/build.gradle.kts — bump the platform/build-tools below (and the
+      # cache key above) alongside it.
       - name: Accept SDK licenses and install required packages
         run: |
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -name sdkmanager -type f | sort -V | tail -n1)"
@@ -37,8 +53,12 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null
           "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0"
 
+      # Read-write here even off the default branch: this repo's real work happens on
+      # feature branches, and there's no shared/public cache to worry about polluting.
       - name: Cache Gradle dependencies
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
