@@ -5,11 +5,6 @@ import android.net.Uri
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -42,9 +37,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +74,7 @@ import com.zenfold.launcher.widgets.WidgetArea
 import com.zenfold.launcher.widgets.WidgetPickerOverlay
 import com.zenfold.launcher.widgets.WidgetType
 import dev.chrisbanes.haze.HazeState
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -105,15 +103,17 @@ fun HomeScreen(
     onRemoveTask: (String) -> Unit
 ) {
     val context = LocalContext.current
-    var drawerOpen by remember { mutableStateOf(false) }
     var focusSearch by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var widgetPickerOpen by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
     val now = rememberCurrentTimeMillis()
-    // Page 0: the Today panel (calendar, tasks, storage). Page 1: the actual home
-    // screen — that's the default; swiping left from it reveals Today.
-    val pagerState = rememberPagerState(initialPage = 1) { 2 }
+    val scope = rememberCoroutineScope()
+    // Page 0: Today (calendar, tasks, feeds). Page 1: the actual home screen — that's
+    // the default. Page 2: all apps, MIUI-style — swipe right from home to reach it,
+    // the same place "swipe up" / tapping Search lands you (AppDrawer is just this page).
+    val pagerState = rememberPagerState(initialPage = 1) { 3 }
+    val drawerOpen by remember { derivedStateOf { pagerState.currentPage == 2 } }
 
     val home = remember(apps, recentPackages) { AppRepository.homeApps(context, apps, recentPackages) }
     // Recent apps first, topped up with the dock/grid defaults so the row is never empty.
@@ -131,17 +131,17 @@ fun HomeScreen(
     fun openDrawer(withKeyboard: Boolean) {
         query = ""
         focusSearch = withKeyboard
-        drawerOpen = true
+        scope.launch { pagerState.animateScrollToPage(2) }
     }
 
     fun closeDrawer() {
-        drawerOpen = false
         focusSearch = false
+        scope.launch { pagerState.animateScrollToPage(1) }
     }
 
     // Pressing Home while ZenFold is already showing should drop back to the home page.
     LaunchedEffect(homeSignal) {
-        closeDrawer()
+        focusSearch = false
         widgetPickerOpen = false
         pagerState.scrollToPage(1)
     }
@@ -174,8 +174,8 @@ fun HomeScreen(
         Wallpaper(style, hazeState, Modifier.fillMaxSize())
 
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            if (page == 0) {
-                TodayPanel(
+            when (page) {
+                0 -> TodayPanel(
                     style = style,
                     hazeState = hazeState,
                     tasks = tasks,
@@ -184,88 +184,73 @@ fun HomeScreen(
                     onToggleTask = onToggleTask,
                     onRemoveTask = onRemoveTask
                 )
-            } else {
-                // Hidden (not just covered) while the drawer is open — Haze only blurs
-                // Wallpaper, so if this stayed on screen it would show through the
-                // drawer's glass, unblurred, on top of the drawer's own content.
-                AnimatedVisibility(
-                    visible = !drawerOpen,
-                    enter = fadeIn(),
-                    exit = fadeOut()
+                1 -> Column(
+                    Modifier
+                        .fillMaxSize()
+                        .nestedScroll(swipeUpToOpen)
+                        .pointerInput(Unit) { detectTapGestures(onLongPress = { widgetPickerOpen = true }) }
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp)
                 ) {
                     Column(
                         Modifier
-                            .fillMaxSize()
-                            .nestedScroll(swipeUpToOpen)
-                            .pointerInput(Unit) { detectTapGestures(onLongPress = { widgetPickerOpen = true }) }
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 20.dp)
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(18.dp)
                     ) {
-                        Column(
-                            Modifier
-                                .weight(1f)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(18.dp)
-                        ) {
-                            Spacer(Modifier.height(20.dp))
-                            ClockBlock(style, now)
-                            WidgetArea(
-                                enabled = enabledWidgets,
-                                style = style,
-                                hazeState = hazeState,
-                                now = now,
-                                apps = apps,
-                                recentPackages = recentPackages,
-                                noteText = noteText,
-                                onNoteChange = onNoteChange,
-                                onLaunch = onLaunch
-                            )
-                            FavoritesGrid(
-                                slots = slots,
-                                style = style,
-                                onLaunch = onLaunch,
-                                onMove = { app, from, to ->
-                                    val occupant = slots[to]?.takeIf { it.packageName != app.packageName }
-                                    onMoveApp(app.packageName, to)
-                                    occupant?.let { onMoveApp(it.packageName, from) }
-                                },
-                                onRemove = { onHideFromHome(it.packageName) }
-                            )
-                            Spacer(Modifier.height(8.dp))
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-                        SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
-                        if (home.dock.isNotEmpty()) {
-                            Spacer(Modifier.height(12.dp))
-                            Dock(home.dock, style, hazeState, onLaunch)
-                        }
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(20.dp))
+                        ClockBlock(style, now)
+                        WidgetArea(
+                            enabled = enabledWidgets,
+                            style = style,
+                            hazeState = hazeState,
+                            now = now,
+                            apps = apps,
+                            recentPackages = recentPackages,
+                            noteText = noteText,
+                            onNoteChange = onNoteChange,
+                            onLaunch = onLaunch
+                        )
+                        FavoritesGrid(
+                            slots = slots,
+                            style = style,
+                            onLaunch = onLaunch,
+                            onMove = { app, from, to ->
+                                val occupant = slots[to]?.takeIf { it.packageName != app.packageName }
+                                onMoveApp(app.packageName, to)
+                                occupant?.let { onMoveApp(it.packageName, from) }
+                            },
+                            onRemove = { onHideFromHome(it.packageName) }
+                        )
+                        Spacer(Modifier.height(8.dp))
                     }
-                }
-            }
-        }
 
-        AnimatedVisibility(
-            visible = drawerOpen,
-            enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 }),
-            exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 4 })
-        ) {
-            AppDrawer(
-                apps = apps,
-                suggested = suggested,
-                style = style,
-                hazeState = hazeState,
-                query = query,
-                onQueryChange = { query = it },
-                focusSearch = focusSearch,
-                onLaunch = { app ->
-                    onLaunch(app)
-                    closeDrawer()
-                },
-                onDismiss = { closeDrawer() }
-            )
+                    Spacer(Modifier.height(12.dp))
+                    SearchPill(style, hazeState, onClick = { openDrawer(withKeyboard = true) })
+                    if (home.dock.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Dock(home.dock, style, hazeState, onLaunch)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+                // Page 2: every installed app — reached by swiping right from Home, the
+                // same as "swipe up" or tapping Search (both just animate the pager here).
+                else -> AppDrawer(
+                    apps = apps,
+                    suggested = suggested,
+                    style = style,
+                    hazeState = hazeState,
+                    query = query,
+                    onQueryChange = { query = it },
+                    focusSearch = focusSearch,
+                    onLaunch = { app ->
+                        onLaunch(app)
+                        closeDrawer()
+                    },
+                    onDismiss = { closeDrawer() }
+                )
+            }
         }
 
         if (widgetPickerOpen) {

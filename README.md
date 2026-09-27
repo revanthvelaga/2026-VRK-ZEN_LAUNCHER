@@ -21,24 +21,27 @@ hand-drawn zen circle, as its visual motif.
   positions are saved per app (`StylePreferences.homeLayout`), not a fixed
   list order. Long-press an icon without moving it for a menu: **App info**,
   **Remove from Home** (unlists it, doesn't touch the install), **Uninstall**
-  (the real system uninstall flow). Swipe up or tap Search to open the
-  drawer; swipe left for the Today panel (see `ui/TodayPanel.kt`); long-press
-  *empty* space opens a quick widget on/off picker
-  (`widgets/WidgetPickerOverlay`) — full Settings now lives in its own app,
-  see below.
-- `ui/TodayPanel.kt` — the page to the left of home (`HorizontalPager`,
-  page 0). **Tasks** (an add/check-off/remove list, persisted by
-  `tasks/TaskPreferences.kt`), **Calendar** (upcoming events via
+  (the real system uninstall flow). Home sits on a 3-page `HorizontalPager`:
+  swipe left for the Today panel (see `ui/TodayPanel.kt`), swipe right —
+  MIUI-style — for every installed app (`ui/AppDrawer.kt`, the same drawer
+  "swipe up" or tapping Search also lands you on; it's just the page to the
+  right now, not a separate overlay). Long-press *empty* Home space opens a
+  quick widget on/off picker (`widgets/WidgetPickerOverlay`) — full Settings
+  now lives in its own app, see below.
+- `ui/TodayPanel.kt` — the page to the left of home. **Tasks** (an
+  add/check-off/remove list, persisted by `tasks/TaskPreferences.kt`), a
+  real **Calendar** month grid (prev/next-month arrows, a dot on any day
+  with an event, tap a day to see its events below — backed by
   `CalendarContract.Instances`, gated behind a real `READ_CALENDAR` runtime
   permission prompt), **Gold & markets** and **Cricket** (live data once you
   add your own free API keys in Settings → Feeds — see `feeds/` below; the
   cards just explain how to add a key until then, they never show fake
-  numbers), **Trending on X** (a static preview list, not live — see why in
-  `feeds/`), and **Storage** (actual device usage via `StatFs`, with a link
-  to the system storage settings). No "Mail" card — reading a real inbox
-  needs Gmail/OAuth account integration, a separate project from anything a
-  launcher can do by itself; showing fake mail data would be worse than not
-  having the section.
+  numbers), **Top tweets** (sample tweet-style content, not live — see why
+  in `feeds/`), and **Storage** (actual device usage via `StatFs`, with a
+  link to the system storage settings). No "Mail" card — reading a real
+  inbox needs Gmail/OAuth account integration, a separate project from
+  anything a launcher can do by itself; showing fake mail data would be
+  worse than not having the section.
 - `feeds/` — `FeedApi.kt` makes the actual network calls (via OkHttp,
   parsed with `org.json`), one function per provider:
   `fetchGoldPrice`/goldapi.io, `fetchSensex`/twelvedata.com,
@@ -46,18 +49,18 @@ hand-drawn zen circle, as its visual motif.
   to that provider using the key you entered — nothing is proxied through
   us, and nothing is fetched at all until a key exists.
   `FeedPreferences.kt` persists the three keys in their own DataStore file
-  (`feeds_prefs`); `FeedModels.kt` has the plain data classes. **Trending on
-  X (Twitter) top 10 is deliberately not wired up**: X removed free access
-  to its trends/search endpoints years ago, and the cheapest tier that
-  restores it is a paid developer plan (~$100+/month) — there's no free or
-  legitimate-scraping path, so `TrendingXCard` in `ui/TodayPanel.kt` shows a
-  static example list labeled "Preview only" rather than pretend it's live.
-  If you get paid X API access yourself, that card is the one place to wire
-  a real call in.
-- `ui/AppDrawer.kt` — a full-screen glass drawer drawn in the launcher's own
-  window: search field, "Suggested" row of recent apps, and an A–Z rail you
-  can tap or drag. Pull down at the top of the list (or press Back/Home) to
-  close it.
+  (`feeds_prefs`); `FeedModels.kt` has the plain data classes. **Top tweets
+  is deliberately not wired to real data**: X removed free access to its
+  trends/search endpoints years ago, and the cheapest tier that restores it
+  is a paid developer plan (~$100+/month) — there's no free or
+  legitimate-scraping path, so `TweetsCard` in `ui/TodayPanel.kt` shows
+  clearly-labeled sample tweets rather than pretend they're live. If you get
+  paid X API access yourself, that card is the one place to wire a real call
+  in.
+- `ui/AppDrawer.kt` — the all-apps page (swipe right from Home, or swipe up
+  / tap Search): search field, "Suggested" row of recent apps, and an A–Z
+  rail you can tap or drag. Pull down at the top of the list (or press
+  Back/Home) to return to Home.
 - `SettingsActivity.kt` / `ui/SettingsScreen.kt` — Settings is a second,
   ordinary launcher-icon entry (`AndroidManifest.xml`: `LAUNCHER` category
   but deliberately *not* `HOME`), so it shows up in the app drawer like any
