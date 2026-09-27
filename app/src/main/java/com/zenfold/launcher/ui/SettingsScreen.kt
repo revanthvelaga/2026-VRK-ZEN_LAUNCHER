@@ -35,6 +35,7 @@ import com.zenfold.launcher.style.CustomStyle
 import com.zenfold.launcher.style.FontScale
 import com.zenfold.launcher.style.IconShapeKind
 import com.zenfold.launcher.style.IconSize
+import com.zenfold.launcher.style.IconStyle
 import com.zenfold.launcher.style.StatusBarStyle
 import com.zenfold.launcher.style.StylePresets
 import com.zenfold.launcher.widgets.WidgetType
@@ -112,6 +113,14 @@ fun SettingsScreen(
                                     .clickable { onChange(style.copy(iconShapeKind = kind)) }
                             )
                         }
+                    }
+                }
+            }
+
+            item {
+                SettingsSection(style, "Icon style") {
+                    SegmentedRow(style, IconStyle.entries.toList(), style.iconStyle, { it.label }) {
+                        onChange(style.copy(iconStyle = it))
                     }
                 }
             }

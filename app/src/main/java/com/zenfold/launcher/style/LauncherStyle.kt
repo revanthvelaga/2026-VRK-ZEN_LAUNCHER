@@ -22,6 +22,11 @@ enum class IconShapeKind(val shape: Shape, val label: String) {
     SQUARE(RoundedCornerShape(6), "Square")
 }
 
+enum class IconStyle(val label: String) {
+    CRYSTAL("Crystal"),
+    ORIGINAL("Original")
+}
+
 enum class IconSize(val sizeDp: Int, val label: String) {
     SMALL(48, "Small"),
     MEDIUM(56, "Medium"),
@@ -52,6 +57,7 @@ data class CustomStyle(
     val glowTopEnd: Color,
     val glowBottomEnd: Color,
     val iconShapeKind: IconShapeKind,
+    val iconStyle: IconStyle,
     val iconSize: IconSize,
     val fontScale: FontScale,
     val showHomeLabels: Boolean,
@@ -85,6 +91,7 @@ object StylePresets {
         glowTopEnd = Color(0x5222D3EE),
         glowBottomEnd = Color(0x33F59E0B),
         iconShapeKind = IconShapeKind.SQUIRCLE,
+        iconStyle = IconStyle.CRYSTAL,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
         showHomeLabels = true,
@@ -104,6 +111,7 @@ object StylePresets {
         glowTopEnd = Color(0x2EFDE293),
         glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.CIRCLE,
+        iconStyle = IconStyle.CRYSTAL,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
         showHomeLabels = true,
@@ -123,6 +131,7 @@ object StylePresets {
         glowTopEnd = Color(0x387C9CBF),
         glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.SQUIRCLE,
+        iconStyle = IconStyle.CRYSTAL,
         iconSize = IconSize.LARGE,
         fontScale = FontScale.LARGE,
         showHomeLabels = true,
@@ -142,6 +151,7 @@ object StylePresets {
         glowTopEnd = Color(0x4D8B5CF6),
         glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.ROUNDED_SQUARE,
+        iconStyle = IconStyle.CRYSTAL,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
         showHomeLabels = false,
@@ -161,6 +171,7 @@ object StylePresets {
         glowTopEnd = Color(0x38FFB454),
         glowBottomEnd = Color.Transparent,
         iconShapeKind = IconShapeKind.ROUNDED_SQUARE,
+        iconStyle = IconStyle.CRYSTAL,
         iconSize = IconSize.MEDIUM,
         fontScale = FontScale.MEDIUM,
         showHomeLabels = true,
