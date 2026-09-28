@@ -92,7 +92,7 @@ class DialerHomeTest {
         launch()
         compose.onNodeWithContentDescription("Open keypad").performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
-        compose.onRoot().performTouchInput { swipeLeft(startY = centerY) }
+        compose.onRoot().performTouchInput { swipeLeft() }
         compose.onNodeWithText("All calls").assertIsDisplayed()
         compose.onNodeWithContentDescription("Open keypad").performClick()
         compose.onAllNodesWithText("2", substring = false).onFirst().assertExists()
