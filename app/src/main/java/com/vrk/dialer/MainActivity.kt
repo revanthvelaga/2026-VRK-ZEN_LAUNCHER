@@ -162,9 +162,6 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
         callLog = loaded.second
         sims = loaded.third
     }
-    // Built once per contact list change, not once per keystroke: T9 needs every contact's
-    // name normalized and split into words, which is wasted work to redo on every digit.
-    val t9Index = remember(contacts) { buildT9Index(contacts) }
 
     var pendingSimCall by remember { mutableStateOf<String?>(null) }
     fun dial(number: String) {
@@ -268,6 +265,9 @@ fun DialerHome(
         (if (missedOnly) callLog.filter { isMissed(it.type) } else callLog).grouped()
     }
     val favorites = remember(contacts) { contacts.filter { it.starred }.distinctBy { it.name } }
+    // Built once per contact list change, not once per keystroke: T9 needs every contact's
+    // name normalized and split into words, which is wasted work to redo on every digit.
+    val t9Index = remember(contacts) { buildT9Index(contacts) }
     // Explicit type on both the emptyList() branch and the val: three chained generic calls
     // (filter/map/take) alongside a bare emptyList() branch is more than this Kotlin
     // compiler version's local type inference resolves on its own.
