@@ -13,7 +13,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.2.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        versionName = "0.3.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
     }
 
     // One fixed debug key, committed on purpose: without it every CI runner signs with a
@@ -35,7 +35,7 @@ android {
             // Shrinking drops the thousands of unused Material icons: ~50 MB → a few MB, small
             // enough to download on the phone. Manifest components are kept automatically.
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         release {
             isMinifyEnabled = false
@@ -54,6 +54,7 @@ dependencies {
     implementation(bom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")

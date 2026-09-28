@@ -6,6 +6,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.telecom.TelecomManager
@@ -14,10 +17,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -70,7 +79,7 @@ class MainActivity : ComponentActivity() {
         dialNumber.value = numberFrom(intent)
         if (savedInstanceState == null) ensureDefaultDialer()
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            DialerTheme {
                 Surface(Modifier.fillMaxSize()) {
                     DialerApp(dialNumber.value, onSetDefault = ::ensureDefaultDialer)
                 }
@@ -128,12 +137,34 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
         reload++
         onPauseOrDispose { }
     }
+    // ...and the moment the call log or contacts actually change, even while this screen
+    // stays in the foreground behind the in-call UI (a call ending writes a new row here).
+    // Debounced: a sync can fire dozens of contact updates in a burst.
+    DisposableEffect(Unit) {
+        val handler = Handler(Looper.getMainLooper())
+        var pending: Runnable? = null
+        val observer = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                pending?.let(handler::removeCallbacks)
+                pending = Runnable { reload++ }.also { handler.postDelayed(it, 400) }
+            }
+        }
+        ctx.contentResolver.registerContentObserver(CallLog.Calls.CONTENT_URI, true, observer)
+        ctx.contentResolver.registerContentObserver(ContactsContract.Contacts.CONTENT_URI, true, observer)
+        onDispose {
+            pending?.let(handler::removeCallbacks)
+            ctx.contentResolver.unregisterContentObserver(observer)
+        }
+    }
     LaunchedEffect(reload) {
         val loaded = withContext(Dispatchers.IO) { Triple(loadContacts(ctx), loadCallLog(ctx), simLabels(ctx)) }
         contacts = loaded.first
         callLog = loaded.second
         sims = loaded.third
     }
+    // Built once per contact list change, not once per keystroke: T9 needs every contact's
+    // name normalized and split into words, which is wasted work to redo on every digit.
+    val t9Index = remember(contacts) { buildT9Index(contacts) }
 
     var pendingSimCall by remember { mutableStateOf<String?>(null) }
     fun dial(number: String) {
@@ -146,7 +177,22 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
         screen = if (screen == Screen.Blocked) Screen.Settings else Screen.Home
     }
 
-    when (val s = screen) {
+    AnimatedContent(
+        targetState = screen,
+        transitionSpec = {
+            val forward = targetState !is Screen.Home && initialState is Screen.Home
+            val backward = targetState is Screen.Home && initialState !is Screen.Home
+            when {
+                forward -> slideInHorizontally(tween(260)) { it / 3 } + fadeIn(tween(220)) togetherWith
+                    fadeOut(tween(160))
+                backward -> fadeIn(tween(200)) togetherWith
+                    slideOutHorizontally(tween(260)) { it / 3 } + fadeOut(tween(180))
+                else -> fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+            }
+        },
+        label = "screen"
+    ) { s ->
+    when (s) {
         Screen.Home -> DialerHome(
             incoming = incoming,
             contacts = contacts,
@@ -171,6 +217,7 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
             onBack = { screen = Screen.Home }
         )
         Screen.Blocked -> BlockedScreen(onBack = { screen = Screen.Settings })
+    }
     }
 
     pendingSimCall?.let { number ->
@@ -221,8 +268,8 @@ fun DialerHome(
         (if (missedOnly) callLog.filter { isMissed(it.type) } else callLog).grouped()
     }
     val favorites = remember(contacts) { contacts.filter { it.starred }.distinctBy { it.name } }
-    val contactMatches = remember(query, contacts) {
-        if (query.isEmpty()) emptyList() else contacts.filter { t9Match(query, it.name, it.number) }.take(60)
+    val contactMatches = remember(query, t9Index) {
+        if (query.isEmpty()) emptyList() else t9Index.filter { it.matches(query) }.map { it.contact }.take(60)
     }
     val numberMatches = remember(query, callLog) {
         if (query.isEmpty()) emptyList()

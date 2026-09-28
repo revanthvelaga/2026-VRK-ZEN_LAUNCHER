@@ -143,22 +143,10 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
         primary?.details?.accountHandle?.let { h -> if (simAccounts(ctx).size > 1) simLabel(ctx, h) else null }
     }
 
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1000)
-        }
-    }
-    fun elapsed(call: Call): String {
-        val s = ((now - call.details.connectTimeMillis) / 1000).coerceAtLeast(0)
-        return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%02d:%02d".format(s / 60, s % 60)
-    }
-
     val status = when (state) {
         Call.STATE_RINGING -> if (active != null || held != null) "Call waiting" else "Incoming call"
         Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_NEW -> "Calling…"
-        Call.STATE_ACTIVE -> primary?.let(::elapsed).orEmpty()
+        Call.STATE_ACTIVE -> null // ticking text, rendered by DurationText below on its own clock
         Call.STATE_HOLDING -> "On hold"
         Call.STATE_SELECT_PHONE_ACCOUNT -> "Choose SIM"
         Call.STATE_DISCONNECTING -> "Ending…"
@@ -191,7 +179,12 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                 }
             }
             Spacer(Modifier.height(if (other != null) 24.dp else 56.dp))
-            Avatar(if (conference) "Conference" else name ?: number, size = 96.dp)
+            Box(contentAlignment = Alignment.Center) {
+                if (state == Call.STATE_RINGING) {
+                    PulsingRing(CallGreen, Modifier.size(96.dp))
+                }
+                Avatar(if (conference) "Conference" else name ?: number, size = 96.dp)
+            }
             Spacer(Modifier.height(16.dp))
             Text(
                 when {
@@ -202,7 +195,11 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
             )
             if (name != null && !conference) Text(number, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
             Spacer(Modifier.height(8.dp))
-            Text(listOfNotNull(status, sim).joinToString(" · "), fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+            if (status != null) {
+                Text(listOfNotNull(status, sim).joinToString(" · "), fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+            } else if (primary != null) {
+                DurationText(primary, sim)
+            }
             if (conference && primary != null) {
                 TextButton(onClick = { showConference = true }) {
                     Text("Manage conference (${primary.children.size})", color = CallGreen)
@@ -214,17 +211,17 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                 Call.STATE_RINGING -> if (active != null || held != null) {
                     // Call waiting, as on MIUI/OxygenOS: three ways to take the new call.
                     Row(Modifier.fillMaxWidth().padding(bottom = 40.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 68.dp) { CallManager.decline() }
-                        RoundButton(Icons.Filled.Call, "Hold & answer", CallGreen, Color.White, 68.dp) { CallManager.answer() }
-                        RoundButton(Icons.Filled.PhoneInTalk, "End & answer", CallGreen, Color.White, 68.dp) { CallManager.endActiveAndAnswer() }
+                        RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 68.dp, elevated = true) { CallManager.decline() }
+                        RoundButton(Icons.Filled.Call, "Hold & answer", CallGreen, Color.White, 68.dp, elevated = true) { CallManager.answer() }
+                        RoundButton(Icons.Filled.PhoneInTalk, "End & answer", CallGreen, Color.White, 68.dp, elevated = true) { CallManager.endActiveAndAnswer() }
                     }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 40.dp)) {
                         RoundButton(Icons.Filled.Sms, "Message", Color.White.copy(alpha = 0.12f), Color.White, 52.dp) { showReplies = true }
                         Spacer(Modifier.height(28.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 72.dp) { CallManager.decline() }
-                            RoundButton(Icons.Filled.Call, "Answer", CallGreen, Color.White, 72.dp) { CallManager.answer() }
+                            RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 72.dp, elevated = true) { CallManager.decline() }
+                            RoundButton(Icons.Filled.Call, "Answer", CallGreen, Color.White, 72.dp, elevated = true) { CallManager.answer() }
                         }
                     }
                 }
@@ -285,7 +282,7 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                     ) {
                         if (showPad) TextButton(onClick = { showPad = false }) { Text("Hide", color = Color.White) }
                         else Spacer(Modifier.width(64.dp))
-                        RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp) { CallManager.hangUp() }
+                        RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp, elevated = true) { CallManager.hangUp() }
                         Spacer(Modifier.width(64.dp))
                     }
                 }
@@ -332,6 +329,20 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
     if (showConference && primary != null) {
         ConferenceDialog(primary, onDismiss = { showConference = false })
     }
+}
+
+/** Its own tick loop, so only this line recomposes every second — not the whole screen. */
+@Composable
+private fun DurationText(call: Call, sim: String?) {
+    var text by remember(call) { mutableStateOf("00:00") }
+    LaunchedEffect(call) {
+        while (true) {
+            val s = ((System.currentTimeMillis() - call.details.connectTimeMillis) / 1000).coerceAtLeast(0)
+            text = if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%02d:%02d".format(s / 60, s % 60)
+            delay(1000)
+        }
+    }
+    Text(listOfNotNull(text, sim).joinToString(" · "), fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
 }
 
 @Composable

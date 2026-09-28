@@ -1,4 +1,4 @@
-# VRK Dialer — MIUI / OxygenOS-style Phone app (v0.2)
+# VRK Dialer — MIUI / OxygenOS-style Phone app (v0.3)
 
 ## Install
 Every push to `feature/vrk-dialer` runs `.github/workflows/build-apk.yml`: it builds a
@@ -45,6 +45,23 @@ To go back: Settings → Apps → Default apps → Phone app → your old Phone 
 **Settings**
 - Default Phone app status, SIM & call settings (forwarding, waiting, caller ID),
   blocked numbers, call notification settings, quick responses, speed dial
+
+## Visual, robustness & efficiency pass (v0.3)
+- **Material You**: the phone's own wallpaper-derived colour scheme on Android 12+, a
+  hand-tuned fallback palette elsewhere; proper light/dark status and navigation bars.
+- **Motion**: a soft pulsing ring behind the avatar on an incoming call, spring-loaded
+  press feedback on every key and round button, and a sliding crossfade between Home,
+  Details and Settings instead of a hard cut.
+- **Efficiency**: the in-call timer now ticks only the one line of text that shows it
+  (previously the whole call screen recomposed every second, even while ringing); T9
+  contact matching is pre-indexed once per contact-list change instead of being
+  recomputed on every keystroke; Recents/Contacts refresh the moment the call log or
+  contacts actually change (a debounced `ContentObserver`), not only when you return
+  to the screen.
+- **Robustness**: fixed an incorrect `Call.Details.can(...)` call (it's a static method,
+  not an instance one — merge/conference availability would have failed to compile,
+  since caught and corrected); shrunk build now carries defensive ProGuard keep rules
+  for the two system-invoked components (`CallService`, `CallActionReceiver`).
 
 ## Not possible for a third-party Phone app
 - **Call recording**: Android blocks call audio for apps other than the phone maker's own.

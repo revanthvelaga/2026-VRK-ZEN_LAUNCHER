@@ -7,11 +7,21 @@ import android.media.ToneGenerator
 import android.net.Uri
 import android.provider.Settings
 import android.util.LruCache
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -89,12 +101,18 @@ fun Dialpad(
                         })
                         else -> null
                     }
+                    val interaction = remember { MutableInteractionSource() }
+                    val pressed by interaction.collectIsPressedAsState()
+                    val scale by animateFloatAsState(if (pressed) 0.88f else 1f, spring(dampingRatio = 0.45f), label = "key")
                     Column(
                         Modifier
                             .weight(1f)
                             .height(64.dp)
+                            .scale(scale)
                             .clip(RoundedCornerShape(16.dp))
                             .combinedClickable(
+                                interactionSource = interaction,
+                                indication = null,
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     DTMF_TONES[key]?.let { toneGen?.startTone(it, 120) }
@@ -121,6 +139,7 @@ fun Dialpad(
 private fun dialTonesEnabled(ctx: Context) =
     Settings.System.getInt(ctx.contentResolver, Settings.System.DTMF_TONE_WHEN_DIALING, 1) == 1
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RoundButton(
     icon: ImageVector,
@@ -129,13 +148,22 @@ fun RoundButton(
     fg: Color,
     size: Dp = 64.dp,
     enabled: Boolean = true,
+    elevated: Boolean = false,
     onClick: () -> Unit
 ) {
     val alpha = if (enabled) 1f else 0.35f
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, spring(dampingRatio = 0.5f), label = "round-button")
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(size).clip(CircleShape).background(bg.copy(alpha = bg.alpha * alpha))
-                .clickable(enabled = enabled, onClick = onClick),
+            Modifier
+                .size(size)
+                .scale(scale)
+                .then(if (elevated) Modifier.shadow(10.dp, CircleShape, spotColor = bg, ambientColor = bg) else Modifier)
+                .clip(CircleShape)
+                .background(bg.copy(alpha = bg.alpha * alpha))
+                .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = label, tint = fg.copy(alpha = alpha), modifier = Modifier.size(size * 0.42f))
@@ -145,6 +173,30 @@ fun RoundButton(
             Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
         }
     }
+}
+
+/**
+ * A soft expanding ring behind the incoming-call avatar (Google's own "someone is calling"
+ * motion). Pure animation, no allocation per frame; stops entirely once composed away.
+ */
+@Composable
+fun PulsingRing(color: Color, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "ring")
+    val scale by transition.animateFloat(
+        initialValue = 1f, targetValue = 1.55f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing)),
+        label = "ring-scale"
+    )
+    val alpha by transition.animateFloat(
+        initialValue = 0.5f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing)),
+        label = "ring-alpha"
+    )
+    Box(
+        modifier
+            .scale(scale)
+            .border(2.dp, color.copy(alpha = alpha), CircleShape)
+    )
 }
 
 // Contact photos are small thumbnails, decoded once and kept for the session.

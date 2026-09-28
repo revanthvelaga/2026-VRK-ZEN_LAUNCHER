@@ -171,23 +171,29 @@ fun loadBlocked(ctx: Context): List<String> = runCatching {
 
 // ---------- T9 search (type 7-2-6 to find "Ram") ----------
 
+/** A contact's name, pre-normalized to T9 form once, so a keystroke re-checks it in O(1)
+ * string operations instead of redoing the whole conversion for every contact every time. */
+class T9Entry internal constructor(val contact: Contact, private val t9: String, private val words: List<String>) {
+    fun matches(query: String): Boolean {
+        if (query.isEmpty()) return true
+        if (contact.number.digits().contains(query)) return true
+        return words.any { it.startsWith(query) } ||
+            t9.startsWith(query) ||
+            words.joinToString("") { it.take(1) }.startsWith(query) // initials
+    }
+}
+
+fun buildT9Index(contacts: List<Contact>): List<T9Entry> = contacts.map { c ->
+    val t9 = c.name.toT9()
+    T9Entry(c, t9.replace(" ", ""), t9.split(' ').filter { it.isNotEmpty() })
+}
+
 private val T9: Map<Char, Char> = buildMap {
     listOf("2abc", "3def", "4ghi", "5jkl", "6mno", "7pqrs", "8tuv", "9wxyz")
         .forEach { s -> s.drop(1).forEach { put(it, s[0]) } }
 }
 
 private fun String.toT9() = lowercase().map { T9[it] ?: if (it.isDigit()) it else ' ' }.joinToString("")
-
-fun t9Match(query: String, name: String?, number: String): Boolean {
-    if (query.isEmpty()) return true
-    if (number.digits().contains(query)) return true
-    if (name == null) return false
-    val t9 = name.toT9()
-    val words = t9.split(' ').filter { it.isNotEmpty() }
-    return words.any { it.startsWith(query) } ||
-        t9.replace(" ", "").startsWith(query) ||
-        words.joinToString("") { it.take(1) }.startsWith(query) // initials
-}
 
 // ---------- SIM & placing calls ----------
 

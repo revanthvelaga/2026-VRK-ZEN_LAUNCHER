@@ -137,3 +137,6 @@ fun Call.number(): String = details.handle?.schemeSpecificPart.orEmpty()
 
 val Call.isConference: Boolean
     get() = details.hasProperty(Call.Details.PROPERTY_CONFERENCE) || children.isNotEmpty()
+
+/** Call.Details.can(capabilities, capability) is a static method, not an instance one. */
+fun Call.Details.can(capability: Int): Boolean = Call.Details.can(callCapabilities, capability)
