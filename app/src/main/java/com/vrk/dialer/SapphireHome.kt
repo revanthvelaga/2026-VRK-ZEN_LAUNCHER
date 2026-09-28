@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -81,7 +82,9 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
         HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.Top) { page ->
             when (page) {
                 0 -> Box(Modifier.fillMaxSize()) { Column(
-                    Modifier.align(Alignment.Center).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                    // Dead centre read as floating too high on a real screen — nudged down
+                    // toward where a thumb actually rests, the way a phone dial pad normally sits.
+                    Modifier.align(BiasAlignment(0f, 0.3f)).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(number.ifEmpty { "Enter a number" }, fontSize = if (number.length > 14) 24.sp else 32.sp,

@@ -4,6 +4,7 @@ import android.Manifest.permission.CALL_PHONE
 import android.Manifest.permission.READ_PHONE_STATE
 import android.annotation.SuppressLint
 import android.app.role.RoleManager
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -57,17 +58,31 @@ fun loadContacts(ctx: Context): List<Contact> = runCatching {
     val out = mutableListOf<Contact>()
     ctx.contentResolver.query(
         Phone.CONTENT_URI,
-        arrayOf(Phone.DISPLAY_NAME, Phone.NUMBER, Phone.PHOTO_THUMBNAIL_URI, Phone.STARRED),
+        arrayOf(Phone.DISPLAY_NAME, Phone.NUMBER, Phone.CONTACT_ID, Phone.STARRED),
         null, null, "${Phone.DISPLAY_NAME} COLLATE NOCASE ASC"
     )?.use { c ->
         while (c.moveToNext()) {
             val name = c.getString(0) ?: continue
             val num = c.getString(1) ?: continue
-            out += Contact(name, num, c.getString(2), c.getInt(3) == 1)
+            out += Contact(name, num, contactPhotoUri(c.getLong(2)), c.getInt(3) == 1)
         }
     }
     out.distinctBy { it.name to it.number.numberKey() }
 }.getOrDefault(emptyList())
+
+/**
+ * The contact's photo through the aggregated Contacts row — the same one Google Contacts
+ * and every stock app show — rather than Phone.PHOTO_THUMBNAIL_URI. That column belongs to
+ * whichever single raw contact this phone-number row came from; when a number was synced
+ * from a *different* raw contact than the one carrying the Google photo (a common shape
+ * once a number is merged from more than one source), it's simply null and the photo
+ * silently "isn't there" even though the contact clearly has one everywhere else.
+ */
+private fun contactPhotoUri(contactId: Long): String =
+    Uri.withAppendedPath(
+        ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId),
+        ContactsContract.Contacts.Photo.CONTENT_DIRECTORY
+    ).toString()
 
 /** Newest first, one row per call (not grouped) — details screens filter this by number. */
 fun loadCallLog(ctx: Context): List<Recent> = runCatching {

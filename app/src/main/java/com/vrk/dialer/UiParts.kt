@@ -5,8 +5,8 @@ import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
-import android.provider.Settings
 import android.util.LruCache
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -91,8 +92,12 @@ fun Dialpad(
     onLongDigit: ((Char) -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
     val ctx = LocalContext.current
-    val toneGen = remember { if (tones && dialTonesEnabled(ctx)) runCatching { ToneGenerator(AudioManager.STREAM_DTMF, 70) }.getOrNull() else null }
+    // Always on, matching what "enable dial pad touch sound" actually means to a user —
+    // not gated behind the phone's own Settings > Sounds > "Dial pad tones" toggle, which
+    // plenty of phones ship off by default.
+    val toneGen = remember { if (tones) runCatching { ToneGenerator(AudioManager.STREAM_DTMF, 70) }.getOrNull() else null }
     DisposableEffect(toneGen) { onDispose { toneGen?.release() } }
 
     Column(modifier.widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -133,7 +138,10 @@ fun Dialpad(
                                 interactionSource = interaction,
                                 indication = null,
                                 onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    // KEYBOARD_TAP is the real "typing on a keypad" click Android
+                                    // uses for its own dial pad — Compose's HapticFeedbackType only
+                                    // exposes LongPress/TextHandleMove, neither of which is that.
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                     DTMF_TONES[key]?.let { toneGen?.startTone(it, 120) }
                                     onKey(key)
                                 },
@@ -155,9 +163,6 @@ fun Dialpad(
         }
     }
 }
-
-private fun dialTonesEnabled(ctx: Context) =
-    Settings.System.getInt(ctx.contentResolver, Settings.System.DTMF_TONE_WHEN_DIALING, 1) == 1
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
