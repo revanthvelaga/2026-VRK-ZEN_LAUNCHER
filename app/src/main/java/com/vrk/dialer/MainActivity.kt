@@ -268,8 +268,11 @@ fun DialerHome(
         (if (missedOnly) callLog.filter { isMissed(it.type) } else callLog).grouped()
     }
     val favorites = remember(contacts) { contacts.filter { it.starred }.distinctBy { it.name } }
-    val contactMatches = remember(query, t9Index) {
-        if (query.isEmpty()) emptyList() else t9Index.filter { it.matches(query) }.map { it.contact }.take(60)
+    // Explicit type on both the emptyList() branch and the val: three chained generic calls
+    // (filter/map/take) alongside a bare emptyList() branch is more than this Kotlin
+    // compiler version's local type inference resolves on its own.
+    val contactMatches: List<Contact> = remember(query, t9Index) {
+        if (query.isEmpty()) emptyList<Contact>() else t9Index.filter { it.matches(query) }.map { it.contact }.take(60)
     }
     val numberMatches = remember(query, callLog) {
         if (query.isEmpty()) emptyList()
