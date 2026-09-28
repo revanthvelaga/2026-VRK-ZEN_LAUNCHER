@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -72,7 +74,7 @@ dependencies {
 tasks.withType<Test> {
     testLogging {
         events("failed")
-        exceptionFormat = "full"
+        exceptionFormat = TestExceptionFormat.FULL
         showExceptions = true
         showCauses = true
         showStackTraces = true
