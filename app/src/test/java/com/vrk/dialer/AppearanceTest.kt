@@ -47,7 +47,7 @@ class AppearanceTest {
         compose.setContent { DialerTheme { Surface(Modifier.fillMaxSize()) {
             DialerHome("", emptyList(), emptyList(), emptyMap(), { called = it }, {}, {})
         } } }
-        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("Open keypad", useUnmergedTree = true).performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
         compose.onNodeWithContentDescription("0, hold for plus").performClick()
         PhoneTheme.entries.forEach { theme ->
@@ -64,7 +64,7 @@ class AppearanceTest {
         compose.setContent { DialerTheme(theme = PhoneTheme.FLOW) { Surface(Modifier.fillMaxSize()) {
             DialerHome("", emptyList(), emptyList(), emptyMap(), {}, {}, {})
         } } }
-        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("Open keypad", useUnmergedTree = true).performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
         compose.onNodeWithText("Hide keypad").performScrollTo().performClick()
         compose.onNodeWithContentDescription("2 ABC").assertDoesNotExist()
