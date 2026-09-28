@@ -59,7 +59,7 @@ class DialerHomeTest {
         launch(onDial = { dialed = it })
         compose.onNodeWithText("Ananya Rao").assertIsDisplayed()
         capture("calls-light")
-        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("Open keypad", useUnmergedTree = true).performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
         compose.onNodeWithContentDescription("0, hold for plus").performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
@@ -90,11 +90,11 @@ class DialerHomeTest {
     }
     @Test fun swipeBetweenTabsPreservesNumber() {
         launch()
-        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("Open keypad", useUnmergedTree = true).performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
         compose.onRoot().performTouchInput { swipeLeft() }
         compose.onNodeWithText("All calls").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("Open keypad", useUnmergedTree = true).performClick()
         compose.onAllNodesWithText("2", substring = false).onFirst().assertExists()
     }
     @Test fun recentTapOpensDetailsWithoutCalling() {
@@ -115,7 +115,7 @@ class DialerHomeTest {
     @Config(qualifiers = "w640dp-h360dp-land-mdpi")
     fun shortWindowKeepsCallActionReachable() {
         launch()
-        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("Open keypad", useUnmergedTree = true).performClick()
         compose.onNodeWithContentDescription("2 ABC").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Call", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         capture("keypad-landscape")
