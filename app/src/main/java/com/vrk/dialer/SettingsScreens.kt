@@ -37,7 +37,7 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked: () -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked: () -> Unit, onBack: () -> Unit, onAppearance: () -> Unit = {}) {
     val ctx = LocalContext.current
     var isDefault by remember { mutableStateOf(isDefaultDialer(ctx)) }
     LifecycleResumeEffect(Unit) {
@@ -52,6 +52,11 @@ fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked:
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         ScreenHeader("Settings", onBack)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item {
+                ListItem(headlineContent = { Text("Appearance & themes") },
+                    supportingContent = { Text("Sapphire, Flow, Luminous • light & dark") },
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onAppearance))
+            }
             item {
                 ListItem(
                     headlineContent = { Text("Default Phone app") },

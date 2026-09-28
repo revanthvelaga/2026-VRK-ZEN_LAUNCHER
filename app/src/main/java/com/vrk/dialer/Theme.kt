@@ -4,8 +4,7 @@ import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -54,23 +53,66 @@ private val DialerTypography = Typography(
 )
 
 @Composable
-fun DialerTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val scheme = if (dark) DarkPalette else LightPalette
+fun DialerTheme(dark: Boolean? = null, theme: PhoneTheme? = null, content: @Composable () -> Unit) {
     val context = LocalContext.current
+    val appearance = rememberAppearance(context)
+    val selected = theme ?: appearance.theme
+    val useDark = dark ?: when (appearance.mode) {
+        DisplayMode.SYSTEM -> isSystemInDarkTheme()
+        DisplayMode.LIGHT -> false
+        DisplayMode.DARK -> true
+    }
+    val scheme = themeColors(selected, useDark)
     val view = LocalView.current
     SideEffect {
         if (!view.isInEditMode) (context as? Activity)?.window?.let { window ->
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !dark
-                isAppearanceLightNavigationBars = !dark
+                isAppearanceLightStatusBars = !useDark
+                isAppearanceLightNavigationBars = !useDark
             }
             window.statusBarColor = scheme.background.toArgb()
             window.navigationBarColor = scheme.background.toArgb()
         }
     }
+    CompositionLocalProvider(LocalAppearance provides appearance.copy(theme = selected)) {
     MaterialTheme(
         colorScheme = scheme, typography = DialerTypography,
         shapes = Shapes(small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(28.dp)),
         content = content
     )
+    }
+}
+
+fun themeColors(theme: PhoneTheme, dark: Boolean): ColorScheme {
+    val base = if (dark) DarkPalette else LightPalette
+    return when (theme) {
+        PhoneTheme.SAPPHIRE -> base
+        PhoneTheme.FLOW -> if (dark) base.copy(
+            primary = Color(0xFFD1BDFF), primaryContainer = Color(0xFF443267),
+            onPrimary = Color(0xFF29164E), onPrimaryContainer = Color(0xFFEEDFFF),
+            background = Color(0xFF14101D), surface = Color(0xFF201A2B),
+            surfaceVariant = Color(0xFF2B2438), outlineVariant = Color(0xFF43394F)
+        ) else base.copy(
+            primary = Color(0xFF6745B5), primaryContainer = Color(0xFFEEE4FF),
+            onPrimaryContainer = Color(0xFF352060), background = Color(0xFFFAF7FF),
+            surfaceVariant = Color(0xFFF0EAF8), outlineVariant = Color(0xFFE4DAEF)
+        )
+        PhoneTheme.LUMINOUS -> if (dark) base.copy(
+            primary = Color(0xFF78DDB5), onPrimary = Color(0xFF003825),
+            primaryContainer = Color(0xFF194D3C), onPrimaryContainer = Color(0xFFBAF4D9),
+            secondaryContainer = Color(0xFF29483B), onSecondaryContainer = Color(0xFFD3F2DF),
+            background = Color(0xFF101714), surface = Color(0xFF18221C),
+            surfaceVariant = Color(0xFF26372D), onSurface = Color(0xFFE9F3EC),
+            onBackground = Color(0xFFE9F3EC), onSurfaceVariant = Color(0xFFB5C7BC),
+            outline = Color(0xFF8B9E92), outlineVariant = Color(0xFF364C40)
+        ) else base.copy(
+            primary = Color(0xFF006C49), onPrimary = Color.White,
+            primaryContainer = Color(0xFFD7F3E5), onPrimaryContainer = Color(0xFF00452E),
+            secondaryContainer = Color(0xFFE0EEE6), onSecondaryContainer = Color(0xFF294B3C),
+            background = Color(0xFFFAFBF9), surface = Color.White,
+            surfaceVariant = Color(0xFFEDF2EF), onSurface = Color(0xFF17251D),
+            onBackground = Color(0xFF17251D), onSurfaceVariant = Color(0xFF4D6456),
+            outline = Color(0xFF708679), outlineVariant = Color(0xFFD9E5DC)
+        )
+    }
 }

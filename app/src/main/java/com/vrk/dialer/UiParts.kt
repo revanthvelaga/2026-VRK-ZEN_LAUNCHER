@@ -91,13 +91,14 @@ fun Dialpad(
     tones: Boolean = true,
     onLongDigit: ((Char) -> Unit)? = null
 ) {
+    val appearance = LocalAppearance.current
     val haptic = LocalHapticFeedback.current
     val view = LocalView.current
     val ctx = LocalContext.current
     // Always on, matching what "enable dial pad touch sound" actually means to a user —
     // not gated behind the phone's own Settings > Sounds > "Dial pad tones" toggle, which
     // plenty of phones ship off by default.
-    val toneGen = remember { if (tones) runCatching { ToneGenerator(AudioManager.STREAM_DTMF, 70) }.getOrNull() else null }
+    val toneGen = remember(tones, appearance.tones) { if (tones && appearance.tones) runCatching { ToneGenerator(AudioManager.STREAM_DTMF, 70) }.getOrNull() else null }
     DisposableEffect(toneGen) { onDispose { toneGen?.release() } }
 
     Column(modifier.widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -108,25 +109,25 @@ fun Dialpad(
                     val longPress: (() -> Unit)? = when {
                         key == '0' -> ({ onKey('+') })
                         onLongDigit != null && key in '1'..'9' -> ({
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onLongDigit?.invoke(key)
                         })
                         else -> null
                     }
                     val interaction = remember { MutableInteractionSource() }
                     val pressed by interaction.collectIsPressedAsState()
-                    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.72f, stiffness = 650f), label = "key")
+                    val scale by animateFloatAsState(if (pressed && appearance.motion) 0.96f else 1f, spring(dampingRatio = 0.72f, stiffness = 650f), label = "key")
                     val keyColor by animateColorAsState(
-                        if (pressed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        if (pressed) MaterialTheme.colorScheme.primaryContainer else if (appearance.theme == PhoneTheme.FLOW) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant,
                         tween(110), label = "key-color"
                     )
                     Column(
                         Modifier
                             .weight(1f)
                             .wrapContentWidth(Alignment.CenterHorizontally)
-                            .size(76.dp)
+                            .widthIn(max = 104.dp).fillMaxWidth().height(68.dp)
                             .scale(scale)
-                            .clip(CircleShape)
+                            .clip(if (appearance.theme == PhoneTheme.LUMINOUS) RoundedCornerShape(24.dp) else CircleShape)
                             .background(keyColor)
                             .semantics { contentDescription = when (key) {
                                 '0' -> "0, hold for plus"
@@ -141,7 +142,7 @@ fun Dialpad(
                                     // KEYBOARD_TAP is the real "typing on a keypad" click Android
                                     // uses for its own dial pad — Compose's HapticFeedbackType only
                                     // exposes LongPress/TextHandleMove, neither of which is that.
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                    if (appearance.haptics) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                     DTMF_TONES[key]?.let { toneGen?.startTone(it, 120) }
                                     onKey(key)
                                 },
@@ -180,8 +181,9 @@ fun RoundButton(
     val alpha = if (enabled) 1f else 0.35f
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val appearance = LocalAppearance.current
     val haptic = LocalHapticFeedback.current
-    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, spring(dampingRatio = 0.5f), label = "round-button")
+    val scale by animateFloatAsState(if (pressed && appearance.motion) 0.9f else 1f, spring(dampingRatio = 0.5f), label = "round-button")
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -190,7 +192,7 @@ fun RoundButton(
                 .then(if (elevated) Modifier.shadow(10.dp, CircleShape, spotColor = bg, ambientColor = bg) else Modifier)
                 .clip(CircleShape)
                 .background(bg.copy(alpha = bg.alpha * alpha))
-                .clickable(role = Role.Button, enabled = enabled, interactionSource = interaction, indication = null, onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }),
+                .clickable(role = Role.Button, enabled = enabled, interactionSource = interaction, indication = null, onClick = { if (appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = accessibilityLabel, tint = fg.copy(alpha = alpha), modifier = Modifier.size(size * 0.42f))
@@ -208,6 +210,7 @@ fun RoundButton(
  */
 @Composable
 fun PulsingRing(color: Color, modifier: Modifier = Modifier) {
+    if (!LocalAppearance.current.motion) return
     val transition = rememberInfiniteTransition(label = "ring")
     val scale by transition.animateFloat(
         initialValue = 1f, targetValue = 1.55f,
@@ -227,10 +230,18 @@ fun PulsingRing(color: Color, modifier: Modifier = Modifier) {
 }
 
 // Contact photos are small thumbnails, decoded once and kept for the session.
-private val photoCache = LruCache<String, ImageBitmap>(200)
+private val photoCache = object : LruCache<String, ImageBitmap>(16 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+}
 
-private fun loadPhoto(ctx: Context, uri: String): ImageBitmap? = photoCache.get(uri) ?: runCatching {
-    ctx.contentResolver.openInputStream(Uri.parse(uri))?.use { BitmapFactory.decodeStream(it) }
+internal fun loadPhoto(ctx: Context, uri: String): ImageBitmap? = photoCache.get(uri) ?: runCatching {
+    val source = Uri.parse(uri)
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    ctx.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    var sample = 1
+    while (bounds.outWidth / sample > 1024 || bounds.outHeight / sample > 1024) sample *= 2
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    ctx.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, options) }
         ?.asImageBitmap()?.also { photoCache.put(uri, it) }
 }.getOrNull()
 

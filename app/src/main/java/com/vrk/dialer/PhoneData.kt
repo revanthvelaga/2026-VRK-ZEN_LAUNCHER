@@ -291,3 +291,19 @@ fun quickReplies(ctx: Context): List<String> =
 fun setQuickReplies(ctx: Context, replies: List<String>) {
     prefs(ctx).edit().putString("quick_replies", replies.filter { it.isNotBlank() }.joinToString("\n")).apply()
 }
+
+// App-only favourites do not modify the user's synced address book.
+fun isLocalFavorite(ctx: Context, number: String): Boolean =
+    ctx.getSharedPreferences("contact_extras", Context.MODE_PRIVATE).getBoolean("favorite_${number.numberKey()}", false)
+fun setLocalFavorite(ctx: Context, number: String, favorite: Boolean) {
+    ctx.getSharedPreferences("contact_extras", Context.MODE_PRIVATE).edit()
+        .putBoolean("favorite_${number.numberKey()}", favorite)
+        .putString("favorite_number_${number.numberKey()}", number).apply()
+}
+
+fun localFavoriteNumbers(ctx: Context): List<String> {
+    val p = ctx.getSharedPreferences("contact_extras", Context.MODE_PRIVATE)
+    return p.all.filter { it.key.startsWith("favorite_") && it.value == true }.keys.mapNotNull {
+        p.getString("favorite_number_${it.removePrefix("favorite_")}", null)
+    }
+}

@@ -42,14 +42,20 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
     onDial: (String) -> Unit, onOpen: (Screen) -> Unit, onChanged: () -> Unit) {
     val ctx = LocalContext.current
     val colors = MaterialTheme.colorScheme
+    val appearance = LocalAppearance.current
     val pager = rememberPagerState(initialPage = 1, pageCount = { 4 })
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     var number by rememberSaveable { mutableStateOf("") }
-    var search by rememberSaveable { mutableStateOf("") }
+    var callSearch by rememberSaveable { mutableStateOf("") }
+    var contactSearch by rememberSaveable { mutableStateOf("") }
+    val search = if (pager.currentPage == 2) contactSearch else callSearch
+    fun updateSearch(value: String) { if (pager.currentPage == 2) contactSearch = value else callSearch = value }
     var missed by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var clear by remember { mutableStateOf(false) }
+    var pickFavorite by remember { mutableStateOf(false) }
+    var favoritesVersion by remember { mutableIntStateOf(0) }
     var speed by remember { mutableStateOf<Int?>(null) }
     val titles = listOf("Phone", "Calls", "Contacts", "Favourites")
     val labels = listOf("Keypad", "Calls", "Contacts", "Favourites")
@@ -61,18 +67,22 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
     LaunchedEffect(incoming) { if (incoming.isNotBlank()) { number = incoming; pager.scrollToPage(0) } }
     LaunchedEffect(pager.settledPage) { if (pager.settledPage == 1) markMissedCallsRead(ctx) }
     BackHandler(pager.currentPage != 1 || search.isNotBlank()) {
-        if (search.isNotBlank()) search = "" else scope.launch { pager.animateScrollToPage(1) }
+        if (search.isNotBlank()) updateSearch("") else scope.launch { pager.animateScrollToPage(1) }
     }
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(colors.primaryContainer.copy(alpha = .4f), colors.background, colors.background))).safeDrawingPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("P H O N E", color = colors.primary, style = MaterialTheme.typography.labelSmall)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BrandMark()
+                    Text("VRK Phone", color = colors.primary, style = MaterialTheme.typography.labelMedium)
+                }
                 Text(titles[pager.currentPage], style = MaterialTheme.typography.headlineLarge)
             }
             if (pager.currentPage == 2) IconButton(onClick = { addToContacts(ctx, "") }) { Icon(Icons.Default.PersonAdd, "Create contact") }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "More options") }
                 DropdownMenu(menu, { menu = false }) {
+                    DropdownMenuItem(text = { Text("Themes") }, onClick = { menu = false; onOpen(Screen.Appearance) })
                     DropdownMenuItem(text = { Text("Settings") }, onClick = { menu = false; onOpen(Screen.Settings) })
                     DropdownMenuItem(text = { Text("Blocked numbers") }, onClick = { menu = false; onOpen(Screen.Blocked) })
                     DropdownMenuItem(text = { Text("Clear call history") }, onClick = { menu = false; clear = true })
@@ -81,53 +91,13 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
         }
         HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.Top) { page ->
             when (page) {
-                0 -> Box(Modifier.fillMaxSize()) { Column(
-                    // Dead centre read as floating too high on a real screen — nudged down
-                    // toward where a thumb actually rests, the way a phone dial pad normally sits.
-                    Modifier.align(BiasAlignment(0f, 0.3f)).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(number.ifEmpty { "Enter a number" }, fontSize = if (number.length > 14) 24.sp else 32.sp,
-                        textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth().animateContentSize())
-                    Row(horizontalArrangement = Arrangement.Center) {
-                        if (number.isNotEmpty()) TextButton(onClick = { addToContacts(ctx, number) }) { Text("Add to contacts") }
-                        TextButton(onClick = {
-                            val clip = ctx.getSystemService(ClipboardManager::class.java).primaryClip
-                            val value = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty()
-                            number = value.filter { it.isDigit() || it in "+*#,;" }.take(100)
-                        }) { Text("Paste") }
-                    }
-                    if (matches.isNotEmpty()) {
-                        val c = matches.first()
-                        ListItem(headlineContent = { Text(c.name, maxLines = 1) }, supportingContent = { Text(c.number) },
-                            leadingContent = { Avatar(c.name, c.photo, 36.dp) },
-                            trailingContent = { IconButton(onClick = { onDial(c.number) }) { Icon(Icons.Default.Call, "Call ${c.name}", tint = CallGreen) } },
-                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { contactDetails(c) })
-                    }
-                    Spacer(Modifier.height(20.dp))
-                    Dialpad(onKey = { if (number.length < 100) number += it }, onLongDigit = { key ->
-                        if (number.isEmpty()) {
-                            if (key == '1') callVoicemail(ctx) else {
-                                val entry = speedDial(ctx, key.digitToInt())
-                                if (entry != null) onDial(entry.number) else speed = key.digitToInt()
-                            }
-                        } else if (number.length < 100) number += key
-                    })
-                    Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { callVoicemail(ctx) }) { Icon(Icons.Default.Voicemail, "Voicemail") }
-                        RoundButton(Icons.Default.Call, null, CallGreen, Color.White, 72.dp, enabled = number.isNotEmpty() || callLog.isNotEmpty(), elevated = true, accessibilityLabel = "Call") {
-                            if (number.isNotEmpty()) onDial(number) else number = callLog.firstOrNull()?.number.orEmpty()
-                        }
-                        IconButton(onClick = { number = number.dropLast(1) }, enabled = number.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Backspace, "Delete digit") }
-                    }
-                    if (number.isNotEmpty()) TextButton(onClick = { number = "" }) { Text("Clear number") }
-                } }
+                0 -> PremiumKeypad(number, { number = it }, matches, callLog, sims,
+                    onDial, { recentDetails(it) }, { contactDetails(it) }, { speed = it })
                 else -> Column(Modifier.fillMaxSize()) {
-                    if (page != 3) OutlinedTextField(value = search, onValueChange = { search = it }, singleLine = true,
+                    if (page != 3) OutlinedTextField(value = search, onValueChange = { updateSearch(it) }, singleLine = true,
                         placeholder = { Text(if (page == 1) "Search calls" else "Search contacts") },
                         leadingIcon = { Icon(Icons.Default.Search, null) },
-                        trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { search = "" }) { Icon(Icons.Default.Close, "Clear search") } },
+                        trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { updateSearch("") }) { Icon(Icons.Default.Close, "Clear search") } },
                         shape = CircleShape, colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Color.Transparent, unfocusedContainerColor = colors.primaryContainer.copy(alpha = .45f)),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp))
                     when (page) {
@@ -156,13 +126,20 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
                             }
                         }
                         3 -> {
-                            Text("Your people, a tap away", color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-                            val favorites = contacts.filter { it.starred }.distinctBy { it.number }
-                            if (favorites.isEmpty()) EmptyHint("Star a contact in your Contacts app to add them here.")
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Your inner circle", color = colors.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { pickFavorite = true }) { Text("Add") }
+                            }
+                            val favorites = remember(contacts, favoritesVersion) {
+                                val saved = contacts.filter { it.starred || isLocalFavorite(ctx, it.number) }
+                                (saved + localFavoriteNumbers(ctx).filter { number -> saved.none { it.number.numberKey() == number.numberKey() } }
+                                    .map { Contact(it, it) }).distinctBy { it.number.numberKey() }
+                            }
+                            if (favorites.isEmpty()) EmptyHint("Tap Add to keep your people close.")
                             LazyVerticalGrid(GridCells.Adaptive(150.dp), contentPadding = PaddingValues(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 items(favorites) { c ->
                                     Column(Modifier.clip(RoundedCornerShape(28.dp)).background(if (c.name.hashCode() % 2 == 0) colors.primaryContainer.copy(alpha = .6f) else colors.secondaryContainer.copy(alpha = .7f)).clickable { contactDetails(c) }.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Avatar(c.name, c.photo, 72.dp)
+                                        ContactPortrait(c.name, c.photo, Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(20.dp)))
                                         Spacer(Modifier.height(12.dp))
                                         Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 12.dp)) {
@@ -180,8 +157,8 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
         NavigationBar(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(30.dp)), containerColor = colors.surface, windowInsets = WindowInsets(0, 0, 0, 0)) {
             labels.forEachIndexed { i, label ->
                 NavigationBarItem(selected = pager.currentPage == i, onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    scope.launch { pager.animateScrollToPage(i) }
+                    if (appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    scope.launch { if (appearance.motion) pager.animateScrollToPage(i) else pager.scrollToPage(i) }
                 }, icon = { Icon(icons[i], if (i == 0) "Open keypad" else null) }, label = { Text(label, fontSize = 10.sp) },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = colors.primary, selectedIconColor = colors.onPrimary, selectedTextColor = colors.primary))
             }
@@ -190,5 +167,8 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
     if (clear) AlertDialog(onDismissRequest = { clear = false }, title = { Text("Clear call history?") }, text = { Text("All recent calls will be deleted from this phone.") },
         confirmButton = { TextButton(onClick = { clear = false; if (!clearCallLog(ctx)) toast(ctx, "Set Phone as your default phone app"); onChanged() }) { Text("Clear") } },
         dismissButton = { TextButton(onClick = { clear = false }) { Text("Cancel") } })
+    if (pickFavorite) ContactPickerDialog("Add favourite", contacts, { pickFavorite = false }) { c ->
+        setLocalFavorite(ctx, c.number, true); favoritesVersion++; pickFavorite = false
+    }
     speed?.let { digit -> ContactPickerDialog("Speed dial $digit", contacts, { speed = null }) { c -> setSpeedDial(ctx, digit, SpeedDial(c.name, c.number)); speed = null } }
 }
