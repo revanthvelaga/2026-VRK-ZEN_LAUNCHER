@@ -64,9 +64,9 @@ class DialerHomeTest {
         compose.onNodeWithContentDescription("0, hold for plus").performClick()
         compose.onNodeWithContentDescription("2 ABC").performClick()
         capture("keypad-light")
-        compose.onNodeWithText("Call", substring = false).performClick()
+        compose.onNodeWithContentDescription("Call", useUnmergedTree = true).performClick()
         assertEquals("202", dialed)
-        compose.onNodeWithContentDescription("Close keypad").performClick()
+        compose.onAllNodesWithText("Calls", substring = false).onLast().performClick()
         compose.onNodeWithText("All calls").assertIsDisplayed()
     }
     @Test fun missedFilterAndContactsSearchAreIndependent() {
@@ -74,7 +74,7 @@ class DialerHomeTest {
         compose.onNodeWithText("Missed", substring = false).performClick()
         compose.onNodeWithText("Ananya Rao").assertDoesNotExist()
         compose.onNodeWithText("Arjun Kumar").assertIsDisplayed()
-        compose.onNodeWithText("Contacts", substring = false).performClick()
+        compose.onAllNodesWithText("Contacts", substring = false).onLast().performClick()
         compose.onNode(hasSetTextAction()).performTextInput("Meera")
         compose.onNodeWithText("Meera Shah").assertIsDisplayed()
         compose.onNodeWithText("Ananya Rao").assertDoesNotExist()
@@ -84,9 +84,32 @@ class DialerHomeTest {
     @Test fun favouritesAndDarkThemeRender() {
         launch(dark = true)
         capture("calls-dark")
-        compose.onNodeWithText("Favourites", substring = false).performClick()
+        compose.onAllNodesWithText("Favourites", substring = false).onLast().performClick()
         compose.onNodeWithText("Ananya Rao").assertIsDisplayed()
         capture("favourites-dark")
+    }
+    @Test fun swipeBetweenTabsPreservesNumber() {
+        launch()
+        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onNodeWithContentDescription("2 ABC").performClick()
+        compose.onRoot().performTouchInput { swipeLeft(startY = centerY) }
+        compose.onNodeWithText("All calls").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Open keypad").performClick()
+        compose.onAllNodesWithText("2", substring = false).onFirst().assertExists()
+    }
+    @Test fun recentTapOpensDetailsWithoutCalling() {
+        var opened: Screen? = null
+        var dialCount = 0
+        compose.setContent {
+            DialerTheme { Surface(Modifier.fillMaxSize()) {
+                DialerHome("", people, calls, emptyMap(), { dialCount++ }, { opened = it }, {})
+            } }
+        }
+        compose.onNodeWithText("Ananya Rao").performClick()
+        compose.runOnIdle {
+            assertEquals(0, dialCount)
+            assertEquals("2025550101", (opened as Screen.Details).number)
+        }
     }
     @Test
     @Config(qualifiers = "w640dp-h360dp-land-mdpi")
@@ -94,7 +117,7 @@ class DialerHomeTest {
         launch()
         compose.onNodeWithContentDescription("Open keypad").performClick()
         compose.onNodeWithContentDescription("2 ABC").performScrollTo().performClick()
-        compose.onNodeWithText("Call", substring = false).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Call", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         capture("keypad-landscape")
     }
 }

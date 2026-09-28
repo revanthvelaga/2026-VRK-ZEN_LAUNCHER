@@ -158,7 +158,7 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF233D34), Color(0xFF101713))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF303B81), Color(0xFF0B102B))))
             .safeDrawingPadding()
     ) {
         val availableHeight = maxHeight
@@ -226,8 +226,8 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                         RoundButton(Icons.Filled.Sms, "Message", Color.White.copy(alpha = 0.12f), Color.White, 52.dp) { showReplies = true }
                         Spacer(Modifier.height(28.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 72.dp, elevated = true) { CallManager.decline() }
-                            RoundButton(Icons.Filled.Call, "Answer", CallGreen, Color.White, 72.dp, elevated = true) { CallManager.answer() }
+                            SwipeCallControl(Icons.Filled.CallEnd, "Decline", CallRed, upward = false) { CallManager.decline() }
+                            SwipeCallControl(Icons.Filled.Call, "Answer", CallGreen, upward = true, ringing = true) { CallManager.answer() }
                         }
                     }
                 }
@@ -288,7 +288,7 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                     ) {
                         if (showPad) TextButton(onClick = { showPad = false }) { Text("Hide", color = Color.White) }
                         else Spacer(Modifier.width(64.dp))
-                        RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp, elevated = true, accessibilityLabel = "End call") { CallManager.hangUp() }
+                        SwipeCallControl(Icons.Filled.CallEnd, "End call", CallRed, upward = false) { CallManager.hangUp() }
                         Spacer(Modifier.width(64.dp))
                     }
                 }

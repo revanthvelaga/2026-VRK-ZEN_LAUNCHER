@@ -120,7 +120,11 @@ fun DetailsScreen(
                     )
                 }
             }
-            items(history) { call ->
+            item {
+                Text("${history.size} calls · ${formatDuration(history.sumOf { it.duration })} total",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+            }
+            items(history.sortedByDescending { it.date }) { call ->
                 val missed = isMissed(call.type)
                 ListItem(
                     headlineContent = {

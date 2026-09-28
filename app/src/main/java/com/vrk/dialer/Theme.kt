@@ -19,27 +19,27 @@ import androidx.core.view.WindowCompat
 
 // Deliberately stable brand palette: wallpaper colours must not change call affordances.
 private val LightPalette = lightColorScheme(
-    primary = Color(0xFF176B55), onPrimary = Color.White,
-    primaryContainer = Color(0xFFD5F3E6), onPrimaryContainer = Color(0xFF0B4636),
-    secondary = Color(0xFF52665E), onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE5EEE8), onSecondaryContainer = Color(0xFF263D33),
+    primary = Color(0xFF4059E8), onPrimary = Color.White,
+    primaryContainer = Color(0xFFE5E9FF), onPrimaryContainer = Color(0xFF2436A0),
+    secondary = Color(0xFF67538D), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFEEE8FC), onSecondaryContainer = Color(0xFF443563),
     tertiary = Color(0xFF596A91), tertiaryContainer = Color(0xFFE2E8FA),
-    background = Color(0xFFF5F6F2), onBackground = Color(0xFF18221E),
-    surface = Color(0xFFFCFDF9), onSurface = Color(0xFF18221E),
-    surfaceVariant = Color(0xFFEAF0E9), onSurfaceVariant = Color(0xFF59675F),
-    outline = Color(0xFF78867D), outlineVariant = Color(0xFFDCE3DB),
+    background = Color(0xFFF8F9FF), onBackground = Color(0xFF151B3D),
+    surface = Color(0xFFFFFFFF), onSurface = Color(0xFF151B3D),
+    surfaceVariant = Color(0xFFF0F3FF), onSurfaceVariant = Color(0xFF657080),
+    outline = Color(0xFF78867D), outlineVariant = Color(0xFFE1E6EE),
     error = Color(0xFFB83742), onError = Color.White
 )
 private val DarkPalette = darkColorScheme(
-    primary = Color(0xFF96DABD), onPrimary = Color(0xFF003828),
-    primaryContainer = Color(0xFF234F40), onPrimaryContainer = Color(0xFFC5F1DE),
-    secondary = Color(0xFFB6CCC0), secondaryContainer = Color(0xFF293C33),
-    onSecondaryContainer = Color(0xFFDCEAE0),
+    primary = Color(0xFFBCC6FF), onPrimary = Color(0xFF162776),
+    primaryContainer = Color(0xFF2D397E), onPrimaryContainer = Color(0xFFE1E6FF),
+    secondary = Color(0xFFD0C2EE), secondaryContainer = Color(0xFF393047),
+    onSecondaryContainer = Color(0xFFEEE5FF),
     tertiary = Color(0xFFBDC9ED), tertiaryContainer = Color(0xFF34425F),
-    background = Color(0xFF101713), onBackground = Color(0xFFE3EBE3),
-    surface = Color(0xFF19221C), onSurface = Color(0xFFE3EBE3),
-    surfaceVariant = Color(0xFF263129), onSurfaceVariant = Color(0xFFB1BFB3),
-    outline = Color(0xFF829086), outlineVariant = Color(0xFF344239),
+    background = Color(0xFF0B0E13), onBackground = Color(0xFFF1F4FA),
+    surface = Color(0xFF141920), onSurface = Color(0xFFF1F4FA),
+    surfaceVariant = Color(0xFF202731), onSurfaceVariant = Color(0xFFA6B2C2),
+    outline = Color(0xFF829086), outlineVariant = Color(0xFF303B49),
     error = Color(0xFFFFB0B7), onError = Color(0xFF65001B)
 )
 private val DialerTypography = Typography(

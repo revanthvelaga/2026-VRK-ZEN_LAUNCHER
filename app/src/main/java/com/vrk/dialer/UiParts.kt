@@ -7,6 +7,7 @@ import android.media.ToneGenerator
 import android.net.Uri
 import android.provider.Settings
 import android.util.LruCache
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -59,7 +60,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-val CallGreen = Color(0xFF168363)
+val CallGreen = Color(0xFF009F70)
 val CallRed = Color(0xFFF2453D)
 
 private val KEYS = listOf(
@@ -94,9 +95,9 @@ fun Dialpad(
     val toneGen = remember { if (tones && dialTonesEnabled(ctx)) runCatching { ToneGenerator(AudioManager.STREAM_DTMF, 70) }.getOrNull() else null }
     DisposableEffect(toneGen) { onDispose { toneGen?.release() } }
 
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         KEYS.chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 row.forEach { (digit, letters) ->
                     val key = digit[0]
                     val longPress: (() -> Unit)? = when {
@@ -109,14 +110,19 @@ fun Dialpad(
                     }
                     val interaction = remember { MutableInteractionSource() }
                     val pressed by interaction.collectIsPressedAsState()
-                    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.45f), label = "key")
+                    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.72f, stiffness = 650f), label = "key")
+                    val keyColor by animateColorAsState(
+                        if (pressed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        tween(110), label = "key-color"
+                    )
                     Column(
                         Modifier
                             .weight(1f)
-                            .height(64.dp)
+                            .wrapContentWidth(Alignment.CenterHorizontally)
+                            .size(76.dp)
                             .scale(scale)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(if (pressed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                            .clip(CircleShape)
+                            .background(keyColor)
                             .semantics { contentDescription = when (key) {
                                 '0' -> "0, hold for plus"
                                 '1' -> if (onLongDigit != null) "1, hold for voicemail" else "1"
@@ -136,10 +142,11 @@ fun Dialpad(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Text(digit, fontSize = 28.sp, fontWeight = FontWeight.Medium)
+                        Text(digit, fontSize = 34.sp, lineHeight = 38.sp, fontWeight = FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurface)
                         Text(
                             if (key == '1' && onLongDigit != null) "voicemail" else letters,
-                            fontSize = if (key == '1') 8.sp else 10.sp, letterSpacing = 1.sp,
+                            fontSize = if (key == '1') 9.sp else 10.sp, letterSpacing = 1.6.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -168,6 +175,7 @@ fun RoundButton(
     val alpha = if (enabled) 1f else 0.35f
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
     val scale by animateFloatAsState(if (pressed) 0.9f else 1f, spring(dampingRatio = 0.5f), label = "round-button")
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
@@ -177,7 +185,7 @@ fun RoundButton(
                 .then(if (elevated) Modifier.shadow(10.dp, CircleShape, spotColor = bg, ambientColor = bg) else Modifier)
                 .clip(CircleShape)
                 .background(bg.copy(alpha = bg.alpha * alpha))
-                .clickable(role = Role.Button, enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
+                .clickable(role = Role.Button, enabled = enabled, interactionSource = interaction, indication = null, onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = accessibilityLabel, tint = fg.copy(alpha = alpha), modifier = Modifier.size(size * 0.42f))

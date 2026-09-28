@@ -29,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.People
@@ -248,272 +249,7 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun DialerHome(
-    incoming: String,
-    contacts: List<Contact>,
-    callLog: List<Recent>,
-    sims: Map<String, String>,
-    onDial: (String) -> Unit,
-    onOpen: (Screen) -> Unit,
-    onChanged: () -> Unit
-) {
-    val ctx = LocalContext.current
-    val focusManager = LocalFocusManager.current
-    var query by rememberSaveable { mutableStateOf("") }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    var padOpen by rememberSaveable { mutableStateOf(false) }
-    var missedOnly by rememberSaveable { mutableStateOf(false) }
-    var contactSearch by rememberSaveable { mutableStateOf("") }
-    var menuOpen by remember { mutableStateOf(false) }
-    var confirmClear by remember { mutableStateOf(false) }
-    var assignSpeedDial by remember { mutableStateOf<Int?>(null) }
-
-    LaunchedEffect(incoming) { if (incoming.isNotEmpty()) { query = incoming; padOpen = true } }
-    // Looking at Recents clears the "missed call" notification, like the stock app.
-    LaunchedEffect(tab) { if (tab == 0) markMissedCallsRead(ctx) }
-
-    val recents = remember(callLog, missedOnly, contactSearch) {
-        val search = contactSearch.trim()
-        callLog.filter { (!missedOnly || isMissed(it.type)) &&
-            (search.isEmpty() || it.name?.contains(search, ignoreCase = true) == true ||
-                it.number.digits().contains(search.digits().ifEmpty { "\u0000" })) }
-            .groupBy { recentDateLabel(it.date) }.values.flatMap { it.grouped() }
-    }
-    val favorites = remember(contacts) { contacts.filter { it.starred }.distinctBy { it.name } }
-    // Built once per contact list change, not once per keystroke: T9 needs every contact's
-    // name normalized and split into words, which is wasted work to redo on every digit.
-    val t9Index = remember(contacts) { buildT9Index(contacts) }
-    // Explicit type on both the emptyList() branch and the val: three chained generic calls
-    // (filter/map/take) alongside a bare emptyList() branch is more than this Kotlin
-    // compiler version's local type inference resolves on its own.
-    val contactMatches: List<Contact> = remember(query, t9Index) {
-        if (query.isEmpty()) emptyList<Contact>() else t9Index.filter { it.matches(query) }.map { it.contact }.take(60)
-    }
-    val numberMatches = remember(query, callLog) {
-        if (query.isEmpty()) emptyList()
-        else callLog.filter { it.name == null && it.number.digits().contains(query) }
-            .distinctBy { it.number.digits() }.take(10)
-    }
-    val filteredContacts = remember(contactSearch, contacts) {
-        val q = contactSearch.trim()
-        if (q.isEmpty()) contacts
-        else contacts.filter { it.name.contains(q, ignoreCase = true) || it.number.digits().contains(q.digits().ifEmpty { "\u0000" }) }
-    }
-    // A–Z sections, '#' (digits, symbols, other scripts) last — grouped so each header
-    // appears exactly once (list keys must be unique).
-    val contactSections = remember(filteredContacts) {
-        filteredContacts.groupBy { c -> c.name.firstOrNull()?.uppercaseChar()?.takeIf { it in 'A'..'Z' } ?: '#' }
-            .toSortedMap(compareBy<Char> { if (it == '#') Char.MAX_VALUE else it })
-    }
-
-    // MIUI behaviour: scrolling the list hides the keypad
-    val listState = rememberLazyListState()
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress && query.isEmpty()) padOpen = false
-    }
-
-    fun details(number: String, name: String?, photo: String?) = onOpen(Screen.Details(number, name, photo))
-
-    val palette = MaterialTheme.colorScheme
-    BackHandler(enabled = padOpen || contactSearch.isNotEmpty() || tab != 0) {
-        when {
-            padOpen -> { padOpen = false; query = "" }
-            contactSearch.isNotEmpty() -> contactSearch = ""
-            else -> tab = 0
-        }
-    }
-    BoxWithConstraints(Modifier.fillMaxSize().background(palette.background).safeDrawingPadding().imePadding()) {
-        val keypadMaxHeight = maxHeight * 0.76f
-        val compact = maxHeight < 500.dp
-        Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                if (!compact) Text("VRK PHONE", style = MaterialTheme.typography.labelMedium, color = palette.primary, letterSpacing = 2.sp)
-                Text(if (padOpen) "Keypad" else listOf("Calls", "Contacts", "Favourites")[tab],
-                    style = if (compact) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge)
-            }
-            if (compact && !padOpen) IconButton(onClick = { focusManager.clearFocus(); contactSearch = ""; padOpen = true }) {
-                Icon(Icons.Filled.Dialpad, "Open keypad", tint = palette.primary)
-            }
-            if (tab == 1 && !padOpen) IconButton(onClick = { addToContacts(ctx, "") }) {
-                Icon(Icons.Filled.PersonAdd, "Create contact", tint = palette.primary)
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More options") }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(text = { Text("Settings") }, onClick = { menuOpen = false; onOpen(Screen.Settings) })
-                    DropdownMenuItem(text = { Text("Blocked numbers") }, onClick = { menuOpen = false; onOpen(Screen.Blocked) })
-                    DropdownMenuItem(text = { Text("Clear call history") }, onClick = { menuOpen = false; confirmClear = true })
-                }
-            }
-        }
-        if (!padOpen) {
-            OutlinedTextField(
-                value = contactSearch, onValueChange = { contactSearch = it },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
-                trailingIcon = { if (contactSearch.isNotEmpty()) IconButton(onClick = { contactSearch = "" }) {
-                    Icon(Icons.Filled.Close, "Clear search")
-                } },
-                placeholder = { Text(if (tab == 0) "Search calls or a number" else "Search your contacts") },
-                singleLine = true, shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.Transparent, focusedBorderColor = palette.primary,
-                    unfocusedContainerColor = palette.surfaceVariant, focusedContainerColor = palette.surface),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
-            )
-            if (tab == 0) Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !missedOnly, onClick = { missedOnly = false }, label = { Text("All calls") }, shape = RoundedCornerShape(16.dp))
-                FilterChip(selected = missedOnly, onClick = { missedOnly = true }, label = { Text("Missed") }, shape = RoundedCornerShape(16.dp))
-            } else Spacer(Modifier.height(16.dp))
-        }
-        Box(Modifier.weight(1f)) {
-            if (query.isEmpty() && tab == 2 && !padOpen) {
-                val shownFavorites = remember(favorites, contactSearch) {
-                    val search = contactSearch.trim()
-                    favorites.filter { search.isEmpty() || it.name.contains(search, ignoreCase = true) ||
-                        it.number.digits().contains(search.digits().ifEmpty { "\u0000" }) }
-                }
-                if (shownFavorites.isEmpty()) EmptyHint(if (contactSearch.isNotEmpty()) "No matching favourites" else "Your people, one tap away\nStar a contact to add them here.")
-                LazyVerticalGrid(columns = GridCells.Adaptive(148.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 88.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(shownFavorites, key = { it.name + it.number }) { c ->
-                        Column(Modifier.clip(RoundedCornerShape(28.dp)).background(palette.surface)
-                            .combinedClickable(onClick = { onDial(c.number) }, onLongClick = { details(c.number, c.name, c.photo) })
-                            .padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Avatar(c.name, c.photo, size = 64.dp)
-                            Spacer(Modifier.height(12.dp))
-                            Text(c.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(c.number, style = MaterialTheme.typography.bodyMedium, color = palette.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            TextButton(onClick = { details(c.number, c.name, c.photo) }) { Text("View contact") }
-                        }
-                    }
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxSize(), state = listState,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = if (padOpen) 8.dp else 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    when {
-                        query.isNotEmpty() -> {
-                            item { SectionCaption("MATCHING CONTACTS") }
-                            items(contactMatches) { c -> ContactRow(c, onCall = { onDial(c.number) }) { details(c.number, c.name, c.photo) } }
-                            items(numberMatches) { r -> RecentRow(r, sims, onDetails = { details(r.number, r.name, r.photo) }) { onDial(r.number) } }
-                            if (contactMatches.isEmpty()) {
-                                item { ListItem(headlineContent = { Text("Create new contact") }, leadingContent = { Icon(Icons.Filled.PersonAdd, null) },
-                                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { addToContacts(ctx, query) }) }
-                                item { ListItem(headlineContent = { Text("Send message") }, leadingContent = { Icon(Icons.Filled.Sms, null) },
-                                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { sendMessage(ctx, query) }) }
-                            }
-                        }
-                        tab == 0 || padOpen -> {
-                            if (recents.isEmpty()) item { EmptyHint(if (contactSearch.isNotEmpty()) "No matching calls" else if (missedOnly) "All caught up\nNo missed calls." else "Your conversations start here\nTap Keypad to make your first call.") }
-                            recents.groupBy { recentDateLabel(it.date) }.forEach { (day, calls) ->
-                                item { SectionCaption(day) }
-                                items(calls) { r -> RecentRow(r, sims, onDetails = { details(r.number, r.name, r.photo) }) { onDial(r.number) } }
-                            }
-                        }
-                        else -> {
-                            contactSections.forEach { (letter, section) ->
-                                item(key = "h$letter") { SectionCaption(letter.toString()) }
-                                items(section) { c -> ContactRow(c, onCall = { onDial(c.number) }) { details(c.number, c.name, c.photo) } }
-                            }
-                            if (filteredContacts.isEmpty()) item { EmptyHint(if (contactSearch.isNotEmpty()) "No matching contacts" else "Your contacts will appear here\nAllow Contacts access in app settings.") }
-                        }
-                    }
-                }
-            }
-            if (!padOpen && !compact) ExtendedFloatingActionButton(
-                onClick = { focusManager.clearFocus(); contactSearch = ""; padOpen = true }, icon = { Icon(Icons.Filled.Dialpad, "Open keypad") }, text = { Text("Keypad") },
-                containerColor = palette.primaryContainer, contentColor = palette.onPrimaryContainer,
-                shape = RoundedCornerShape(24.dp), modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp))
-        }
-        if (padOpen) {
-            Surface(modifier = Modifier.heightIn(max = keypadMaxHeight), shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp), color = palette.surface, tonalElevation = 2.dp) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { padOpen = false; query = "" }) { Icon(Icons.Filled.KeyboardArrowDown, "Close keypad") }
-                        Text(query.ifEmpty { "Enter a number" }, fontSize = if (query.isEmpty()) 20.sp else 30.sp,
-                            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = if (query.isEmpty()) palette.onSurfaceVariant else palette.onSurface,
-                            textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
-                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).combinedClickable(
-                            onClick = {
-                                if (query.isNotEmpty()) query = query.dropLast(1)
-                                else {
-                                    val clipboard = ctx.getSystemService(android.content.ClipboardManager::class.java)
-                                    val pasted = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty()
-                                    query = pasted.filter { it.isDigit() || it in "+*#,;" }.take(100)
-                                    if (query.isEmpty()) toast(ctx, "No phone number to paste")
-                                }
-                            }, onLongClick = { query = "" }), contentAlignment = Alignment.Center) {
-                            Icon(if (query.isEmpty()) Icons.Filled.ContentPaste else Icons.AutoMirrored.Filled.Backspace,
-                                if (query.isEmpty()) "Paste number" else "Delete digit; hold to clear", tint = palette.onSurfaceVariant)
-                        }
-                    }
-                    Dialpad(onKey = { query += it }, onLongDigit = { key ->
-                        if (query.isEmpty()) {
-                            if (key == '1') callVoicemail(ctx)
-                            else {
-                                val digit = key.digitToInt()
-                                val entry = speedDial(ctx, digit)
-                                if (entry != null) onDial(entry.number) else assignSpeedDial = digit
-                            }
-                        } else query += key
-                    })
-                    Button(onClick = { if (query.isNotEmpty()) onDial(query) else callLog.firstOrNull()?.let { query = it.number } },
-                        enabled = query.isNotEmpty() || callLog.isNotEmpty(), shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 10.dp).height(56.dp)) {
-                        Icon(Icons.Filled.Call, null)
-                        Spacer(Modifier.width(12.dp))
-                        Text(if (query.isEmpty()) "Last number" else "Call", style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
-        } else {
-            NavigationBar(containerColor = palette.background, tonalElevation = 0.dp, windowInsets = WindowInsets(0, 0, 0, 0)) {
-                val icons = listOf(Icons.Filled.History, Icons.Filled.People, Icons.Filled.Star)
-                listOf("Calls", "Contacts", "Favourites").forEachIndexed { index, label ->
-                    NavigationBarItem(selected = tab == index, onClick = { focusManager.clearFocus(); tab = index; contactSearch = "" },
-                        icon = { Icon(icons[index], null) }, label = { Text(label) })
-                }
-            }
-        }
-    }
-
-    }
-
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Clear call history?") },
-            text = { Text("All recent calls will be deleted from this phone.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClear = false
-                    if (!clearCallLog(ctx)) toast(ctx, "Set VRK Dialer as the default Phone app to delete calls")
-                    onChanged()
-                }) { Text("Clear", color = CallRed) }
-            },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
-        )
-    }
-    assignSpeedDial?.let { digit ->
-        ContactPickerDialog(
-            title = "Speed dial $digit",
-            contacts = contacts,
-            onDismiss = { assignSpeedDial = null },
-            onPick = { c ->
-                setSpeedDial(ctx, digit, SpeedDial(c.name, c.number))
-                assignSpeedDial = null
-                toast(ctx, "Long-press $digit to call ${c.name}")
-            }
-        )
-    }
-}
-
-private fun recentDateLabel(timestamp: Long): String {
+fun recentDateLabel(timestamp: Long): String {
     val day = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
     val today = java.util.Calendar.getInstance()
     fun sameDay() = day.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
@@ -548,7 +284,8 @@ fun ContactRow(c: Contact, onCall: () -> Unit, onClick: () -> Unit) {
         trailingContent = {
             IconButton(onClick = onCall) { Icon(Icons.Filled.Call, "Call ${c.name}", tint = MaterialTheme.colorScheme.primary) }
         },
-        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onClick)
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onClick)
     )
 }
 
@@ -571,8 +308,8 @@ fun RecentRow(r: Recent, sims: Map<String, String>, onDetails: () -> Unit, onCli
             }
         },
         leadingContent = { Avatar(r.name, r.photo) },
-        trailingContent = { IconButton(onClick = onDetails) { Icon(Icons.Filled.Info, "Details") } },
-        modifier = Modifier.clip(RoundedCornerShape(20.dp)).combinedClickable(onClick = onClick, onLongClick = onDetails)
+        trailingContent = { IconButton(onClick = onClick) { Icon(Icons.Filled.Call, "Call ${r.name ?: r.number}", tint = CallGreen, modifier = Modifier.size(20.dp)) } },
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).combinedClickable(onClick = onDetails, onLongClick = onDetails)
     )
 }
 
