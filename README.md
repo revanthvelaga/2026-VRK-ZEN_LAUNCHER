@@ -1,7 +1,11 @@
-# VRK Dialer — MIUI / OxygenOS-style Phone app (v0.3)
+# VRK Phone — premium dialer design (v0.4)
+
+A native Android dialer with a consistent emerald and neutral design, light/dark
+themes, searchable call history, contact cards, and an on-demand keypad.
+See [design and validation notes](docs/PREMIUM-DIALER.md).
 
 ## Install
-Every push to `feature/vrk-dialer` runs `.github/workflows/build-apk.yml`: it builds a
+Once these changes are applied to `feature/vrk-dialer`, every push runs `.github/workflows/build-apk.yml`: it compiles, lints, runs UI tests, and builds a
 debug APK (shrunk to a few MB) and publishes it. The newest build is always at:
 
 https://github.com/revanthvelaga/2026-VRK-ZEN_LAUNCHER/releases/download/dialer-latest/VRK-Dialer.apk
@@ -46,9 +50,15 @@ To go back: Settings → Apps → Default apps → Phone app → your old Phone 
 - Default Phone app status, SIM & call settings (forwarding, waiting, caller ID),
   blocked numbers, call notification settings, quick responses, speed dial
 
-## Visual, robustness & efficiency pass (v0.3)
-- **Material You**: the phone's own wallpaper-derived colour scheme on Android 12+, a
-  hand-tuned fallback palette elsewhere; proper light/dark status and navigation bars.
+## Design and interaction (v0.4)
+- **Visual system**: a stable emerald palette, warm neutral surfaces, deliberate
+  typography, adaptive icon and system-following light/dark themes.
+- **Navigation**: Calls, Contacts and Favourites in bottom navigation; a prominent
+  keypad action moves into the header on short screens.
+- **Search and history**: name/number search, missed-call filtering, date sections.
+- **Keypad**: shaped keys, number paste, labelled call action and scrollable controls
+  when the available screen height is limited.
+- **Contact cards**: adaptive favourites grid and redesigned contact details.
 - **Motion**: a soft pulsing ring behind the avatar on an incoming call, spring-loaded
   press feedback on every key and round button, and a sliding crossfade between Home,
   Details and Settings instead of a hard cut.

@@ -31,7 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +45,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -53,7 +59,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-val CallGreen = Color(0xFF2DBE60)
+val CallGreen = Color(0xFF168363)
 val CallRed = Color(0xFFF2453D)
 
 private val KEYS = listOf(
@@ -88,9 +94,9 @@ fun Dialpad(
     val toneGen = remember { if (tones && dialTonesEnabled(ctx)) runCatching { ToneGenerator(AudioManager.STREAM_DTMF, 70) }.getOrNull() else null }
     DisposableEffect(toneGen) { onDispose { toneGen?.release() } }
 
-    Column(modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         KEYS.chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { (digit, letters) ->
                     val key = digit[0]
                     val longPress: (() -> Unit)? = when {
@@ -103,14 +109,21 @@ fun Dialpad(
                     }
                     val interaction = remember { MutableInteractionSource() }
                     val pressed by interaction.collectIsPressedAsState()
-                    val scale by animateFloatAsState(if (pressed) 0.88f else 1f, spring(dampingRatio = 0.45f), label = "key")
+                    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.45f), label = "key")
                     Column(
                         Modifier
                             .weight(1f)
                             .height(64.dp)
                             .scale(scale)
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(if (pressed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                            .semantics { contentDescription = when (key) {
+                                '0' -> "0, hold for plus"
+                                '1' -> if (onLongDigit != null) "1, hold for voicemail" else "1"
+                                else -> "$digit $letters"
+                            } }
                             .combinedClickable(
+                                role = Role.Button,
                                 interactionSource = interaction,
                                 indication = null,
                                 onClick = {
@@ -123,9 +136,9 @@ fun Dialpad(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Text(digit, fontSize = 28.sp, fontWeight = FontWeight.Light)
+                        Text(digit, fontSize = 28.sp, fontWeight = FontWeight.Medium)
                         Text(
-                            if (key == '1') "voicemail" else letters,
+                            if (key == '1' && onLongDigit != null) "voicemail" else letters,
                             fontSize = if (key == '1') 8.sp else 10.sp, letterSpacing = 1.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -149,6 +162,7 @@ fun RoundButton(
     size: Dp = 64.dp,
     enabled: Boolean = true,
     elevated: Boolean = false,
+    accessibilityLabel: String? = label,
     onClick: () -> Unit
 ) {
     val alpha = if (enabled) 1f else 0.35f
@@ -163,10 +177,10 @@ fun RoundButton(
                 .then(if (elevated) Modifier.shadow(10.dp, CircleShape, spotColor = bg, ambientColor = bg) else Modifier)
                 .clip(CircleShape)
                 .background(bg.copy(alpha = bg.alpha * alpha))
-                .clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
+                .clickable(role = Role.Button, enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = label, tint = fg.copy(alpha = alpha), modifier = Modifier.size(size * 0.42f))
+            Icon(icon, contentDescription = accessibilityLabel, tint = fg.copy(alpha = alpha), modifier = Modifier.size(size * 0.42f))
         }
         if (label != null) {
             Spacer(Modifier.height(6.dp))
@@ -211,13 +225,15 @@ private fun loadPhoto(ctx: Context, uri: String): ImageBitmap? = photoCache.get(
 @Composable
 fun Avatar(name: String?, photo: String? = null, size: Dp = 44.dp) {
     val ctx = LocalContext.current
-    val image by produceState<ImageBitmap?>(photo?.let { photoCache.get(it) }, photo) {
-        if (photo != null && value == null) value = withContext(Dispatchers.IO) { loadPhoto(ctx, photo) }
+    var image by remember(photo) { mutableStateOf(photo?.let { photoCache.get(it) }) }
+    LaunchedEffect(photo) {
+        if (photo != null && image == null) image = withContext(Dispatchers.IO) { loadPhoto(ctx, photo) }
     }
     val letter = name?.firstOrNull { it.isLetter() }?.uppercaseChar()?.toString() ?: "#"
-    val hue = ((name?.hashCode() ?: 0) and 0xFFFF) % 360
+    val avatarColors = listOf(Color(0xFF386B5C), Color(0xFF586E96), Color(0xFF946754), Color(0xFF7C638D), Color(0xFF657345))
+    val avatarColor = avatarColors[((name?.hashCode() ?: 0) and 0x7FFFFFFF) % avatarColors.size]
     Box(
-        Modifier.size(size).clip(CircleShape).background(Color.hsl(hue.toFloat(), 0.45f, 0.55f)),
+        Modifier.size(size).clip(CircleShape).background(Brush.linearGradient(listOf(avatarColor, avatarColor.copy(red = avatarColor.red * 0.75f, green = avatarColor.green * 0.75f, blue = avatarColor.blue * 0.75f)))),
         contentAlignment = Alignment.Center
     ) {
         val img = image

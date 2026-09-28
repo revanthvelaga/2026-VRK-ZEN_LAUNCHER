@@ -238,7 +238,11 @@ private fun placeCall(ctx: Context, uri: Uri, sim: PhoneAccountHandle?) {
 }
 
 /** Clears the "missed call" notification once you've looked at Recents. */
+// Telecom authorizes the default dialer as an alternative to the signature-only
+// MODIFY_PHONE_STATE permission; lint cannot infer a runtime role check.
+@SuppressLint("MissingPermission")
 fun markMissedCallsRead(ctx: Context) {
+    if (!isDefaultDialer(ctx)) return
     runCatching { telecom(ctx).cancelMissedCallsNotification() }
 }
 

@@ -11,6 +11,8 @@ import android.telecom.CallAudioState
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,7 +60,7 @@ class InCallActivity : ComponentActivity() {
             proximity = pm.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "vrk:proximity")
         }
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            DialerTheme(dark = true) {
                 CompositionLocalProvider(LocalContentColor provides Color.White) {
                     InCallScreen(onDone = { finish() }, onProximity = ::setProximity)
                 }
@@ -153,16 +155,19 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
         else -> "Call ended"
     }
 
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF1B2A3A), Color(0xFF0B0F14))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF233D34), Color(0xFF101713))))
             .safeDrawingPadding()
     ) {
+        val availableHeight = maxHeight
         Column(
-            Modifier.fillMaxSize().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = availableHeight).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
             if (other != null && state != Call.STATE_RINGING) {
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
@@ -178,12 +183,12 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                     if (other.state == Call.STATE_HOLDING) Text("Swap", color = CallGreen, fontSize = 15.sp)
                 }
             }
-            Spacer(Modifier.height(if (other != null) 24.dp else 56.dp))
+            Spacer(Modifier.height(if (other != null) 24.dp else 32.dp))
             Box(contentAlignment = Alignment.Center) {
                 if (state == Call.STATE_RINGING) {
-                    PulsingRing(CallGreen, Modifier.size(96.dp))
+                    PulsingRing(CallGreen, Modifier.size(104.dp))
                 }
-                Avatar(if (conference) "Conference" else name ?: number, size = 96.dp)
+                Avatar(if (conference) "Conference" else name ?: number, size = 104.dp)
             }
             Spacer(Modifier.height(16.dp))
             Text(
@@ -191,7 +196,7 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                     conference -> "Conference call"
                     else -> name ?: number.ifEmpty { "Unknown number" }
                 },
-                fontSize = 30.sp, textAlign = TextAlign.Center, maxLines = 2
+                style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center, maxLines = 2
             )
             if (name != null && !conference) Text(number, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
             Spacer(Modifier.height(8.dp))
@@ -205,8 +210,9 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                     Text("Manage conference (${primary.children.size})", color = CallGreen)
                 }
             }
-            Spacer(Modifier.weight(1f))
-
+            Spacer(Modifier.height(32.dp))
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
             when (state) {
                 Call.STATE_RINGING -> if (active != null || held != null) {
                     // Call waiting, as on MIUI/OxygenOS: three ways to take the new call.
@@ -237,7 +243,7 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                         Spacer(Modifier.height(8.dp))
                     }
                     Spacer(Modifier.height(24.dp))
-                    RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp) { CallManager.hangUp() }
+                    RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp, accessibilityLabel = "End call") { CallManager.hangUp() }
                 }
 
                 else -> {
@@ -282,12 +288,14 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                     ) {
                         if (showPad) TextButton(onClick = { showPad = false }) { Text("Hide", color = Color.White) }
                         else Spacer(Modifier.width(64.dp))
-                        RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp, elevated = true) { CallManager.hangUp() }
+                        RoundButton(Icons.Filled.CallEnd, null, CallRed, Color.White, 72.dp, elevated = true, accessibilityLabel = "End call") { CallManager.hangUp() }
                         Spacer(Modifier.width(64.dp))
                     }
                 }
             }
         }
+    }
+
     }
 
     if (showReplies) {
@@ -348,8 +356,9 @@ private fun DurationText(call: Call, sim: String?) {
 @Composable
 private fun rememberContactName(number: String): String? {
     val ctx = LocalContext.current
-    val name by produceState<String?>(null, number) {
-        value = if (number.isBlank()) null else withContext(Dispatchers.IO) { lookupName(ctx, number) }
+    var name by remember(number) { mutableStateOf<String?>(null) }
+    LaunchedEffect(number) {
+        name = if (number.isBlank()) null else withContext(Dispatchers.IO) { lookupName(ctx, number) }
     }
     return name
 }

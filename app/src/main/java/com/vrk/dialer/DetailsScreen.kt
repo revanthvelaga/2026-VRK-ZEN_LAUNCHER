@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.text.format.DateUtils
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,18 +54,19 @@ fun DetailsScreen(
         contactUri = uri
     }
 
-    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            Text("Contact details", style = MaterialTheme.typography.titleMedium)
         }
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item {
-                Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Avatar(name, photo, size = 96.dp)
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(32.dp)).background(MaterialTheme.colorScheme.surface).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Avatar(name, photo, size = 104.dp)
                     Spacer(Modifier.height(12.dp))
-                    Text(name ?: number, fontSize = 26.sp, textAlign = TextAlign.Center)
+                    Text(name ?: number, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                     if (name != null) Text(number, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (blocked) Text("Blocked", color = CallRed, fontSize = 13.sp)
+                    if (blocked) Text("Blocked", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
                     Spacer(Modifier.height(20.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         RoundButton(Icons.Filled.Call, "Call", CallGreen, Color.White, 56.dp) { onDial(number) }
@@ -90,9 +94,9 @@ fun DetailsScreen(
             }
             item {
                 ListItem(
-                    headlineContent = { Text(if (blocked) "Unblock number" else "Block number", color = CallRed) },
-                    leadingContent = { Icon(Icons.Filled.Block, null, tint = CallRed) },
-                    modifier = Modifier.clickable {
+                    headlineContent = { Text(if (blocked) "Unblock number" else "Block number", color = MaterialTheme.colorScheme.error) },
+                    leadingContent = { Icon(Icons.Filled.Block, null, tint = MaterialTheme.colorScheme.error) },
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable {
                         val ok = if (blocked) unblockNumber(ctx, number) else blockNumber(ctx, number)
                         if (ok) {
                             blocked = !blocked
@@ -106,12 +110,12 @@ fun DetailsScreen(
                     ListItem(
                         headlineContent = { Text("Delete call history") },
                         leadingContent = { Icon(Icons.Filled.Delete, null) },
-                        modifier = Modifier.clickable { confirmDelete = true }
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { confirmDelete = true }
                     )
                 }
                 item {
                     Text(
-                        "Call history", fontSize = 13.sp, color = CallGreen,
+                        "Call history", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp)
                     )
                 }
@@ -152,7 +156,7 @@ fun DetailsScreen(
                     confirmDelete = false
                     if (deleteCalls(ctx, history.flatMap { it.ids })) onChanged()
                     else toast(ctx, "Set VRK Dialer as the default Phone app to delete calls")
-                }) { Text("Delete", color = CallRed) }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
         )

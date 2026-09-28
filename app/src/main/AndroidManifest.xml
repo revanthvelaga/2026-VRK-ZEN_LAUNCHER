@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
@@ -13,8 +14,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
-        android:label="Dialer"
-        android:icon="@drawable/ic_launcher"
+        android:label="VRK Phone"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <!-- Main dialer screen. The DIAL filters are required to be eligible as default Phone app -->

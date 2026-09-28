@@ -2,6 +2,9 @@ package com.vrk.dialer
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,13 +27,13 @@ import kotlinx.coroutines.withContext
 private fun ScreenHeader(title: String, onBack: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 16.dp)) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
-        Text(title, fontSize = 22.sp)
+        Text(title, style = MaterialTheme.typography.headlineMedium)
     }
 }
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, color = CallGreen, fontSize = 13.sp, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 4.dp))
+    Text(text, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 4.dp))
 }
 
 @Composable
@@ -46,9 +49,9 @@ fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked:
     var speedDials by remember { mutableStateOf((2..9).associateWith { speedDial(ctx, it) }) }
     var pickSpeedDial by remember { mutableStateOf<Int?>(null) }
 
-    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         ScreenHeader("Settings", onBack)
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item {
                 ListItem(
                     headlineContent = { Text("Default Phone app") },
@@ -62,20 +65,20 @@ fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked:
                 ListItem(
                     headlineContent = { Text("SIM & call settings") },
                     supportingContent = { Text("Default SIM, call forwarding, call waiting, caller ID") },
-                    modifier = Modifier.clickable { openCallSettings(ctx) }
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { openCallSettings(ctx) }
                 )
             }
             item {
                 ListItem(
                     headlineContent = { Text("Blocked numbers") },
-                    modifier = Modifier.clickable(onClick = onBlocked)
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable(onClick = onBlocked)
                 )
             }
             item {
                 ListItem(
                     headlineContent = { Text("Call notifications") },
                     supportingContent = { Text("Heads-up for incoming calls") },
-                    modifier = Modifier.clickable {
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable {
                         startSafely(ctx, Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName))
                     }
                 )
@@ -85,7 +88,7 @@ fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked:
             items(replies.size) { index ->
                 ListItem(
                     headlineContent = { Text(replies[index]) },
-                    modifier = Modifier.clickable { editReply = index }
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { editReply = index }
                 )
             }
             item {
@@ -110,7 +113,7 @@ fun SettingsScreen(contacts: List<Contact>, onSetDefault: () -> Unit, onBlocked:
                             speedDials = speedDials + (digit to null)
                         }) { Icon(Icons.Filled.Close, "Clear") }
                     },
-                    modifier = Modifier.clickable { pickSpeedDial = digit }
+                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { pickSpeedDial = digit }
                 )
             }
             item { Spacer(Modifier.height(24.dp)) }
@@ -162,7 +165,7 @@ fun BlockedScreen(onBack: () -> Unit) {
         numbers = list
     }
 
-    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
         ScreenHeader("Blocked numbers", onBack)
         if (!allowed) {
             Text(
@@ -185,7 +188,7 @@ fun BlockedScreen(onBack: () -> Unit) {
                 } else toast(ctx, "Couldn't block that number")
             }) { Text("Block") }
         }
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (numbers.isEmpty()) item { EmptyHint("No blocked numbers") }
             items(numbers) { number ->
                 ListItem(

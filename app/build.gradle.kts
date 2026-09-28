@@ -13,7 +13,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.3.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        versionName = "0.4.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
     }
 
     // One fixed debug key, committed on purpose: without it every CI runner signs with a
@@ -47,11 +47,16 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(bom)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.animation:animation")
