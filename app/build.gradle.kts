@@ -13,7 +13,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        versionName = "0.2.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
     }
 
     // One fixed debug key, committed on purpose: without it every CI runner signs with a
@@ -32,6 +32,10 @@ android {
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")
+            // Shrinking drops the thousands of unused Material icons: ~50 MB → a few MB, small
+            // enough to download on the phone. Manifest components are kept automatically.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
         release {
             isMinifyEnabled = false

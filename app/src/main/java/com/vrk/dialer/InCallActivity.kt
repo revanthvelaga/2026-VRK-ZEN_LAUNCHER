@@ -1,24 +1,40 @@
+@file:Suppress("DEPRECATION") // Call.getState() / CallAudioState: minSdk 29
+
 package com.vrk.dialer
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.PowerManager
 import android.telecom.Call
+import android.telecom.CallAudioState
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhoneInTalk
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -36,61 +52,116 @@ class InCallActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Screen turns off when the phone is at your ear, so your cheek can't press buttons
+        handleAnswer(intent)
         val pm = getSystemService(PowerManager::class.java)
         if (pm.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
             proximity = pm.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "vrk:proximity")
-                .apply { acquire(2 * 60 * 60 * 1000L) }
         }
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 CompositionLocalProvider(LocalContentColor provides Color.White) {
-                    InCallScreen(onDone = { finish() })
+                    InCallScreen(onDone = { finish() }, onProximity = ::setProximity)
                 }
             }
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAnswer(intent)
+    }
+
+    // "Answer" in the notification opens this screen with the extra (see CallNotifications).
+    private fun handleAnswer(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_ANSWER, false) == true) CallManager.answer()
+    }
+
+    /** Screen off at your ear, so your cheek can't press buttons — not on speaker or Bluetooth. */
+    private fun setProximity(on: Boolean) {
+        val lock = proximity ?: return
+        if (on && !lock.isHeld) lock.acquire(2 * 60 * 60 * 1000L)
+        if (!on && lock.isHeld) lock.release()
+    }
+
     override fun onDestroy() {
-        proximity?.let { if (it.isHeld) it.release() }
+        setProximity(false)
         super.onDestroy()
+    }
+
+    companion object {
+        private const val EXTRA_ANSWER = "answer"
+
+        fun intent(ctx: Context, answer: Boolean = false): Intent =
+            Intent(ctx, InCallActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(EXTRA_ANSWER, answer)
     }
 }
 
+private val EAR_STATES = setOf(Call.STATE_ACTIVE, Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_HOLDING)
+
 @Composable
-fun InCallScreen(onDone: () -> Unit) {
+fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    val call by CallManager.call.collectAsState()
-    val state by CallManager.state.collectAsState()
+    val version by CallManager.version.collectAsState()
+    val audio by CallManager.audio.collectAsState()
+    val calls = remember(version) { CallManager.calls.value }
+    val primary = remember(version) { CallManager.primary() }
+    val ringing = remember(version) { CallManager.ringing() }
+    val active = remember(version) { CallManager.active() }
+    val held = remember(version) { CallManager.held() }
+    val canMerge = remember(version) { CallManager.canMerge() }
+    val state = primary?.state ?: Call.STATE_DISCONNECTED
+    // The other call while two are up (one on hold) — shown as a strip you can swap to.
+    val other = remember(version) { calls.firstOrNull { it != primary && it.state != Call.STATE_RINGING } }
 
-    var number by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf<String?>(null) }
-    var muted by remember { mutableStateOf(false) }
-    var speaker by remember { mutableStateOf(false) }
-    var held by remember { mutableStateOf(false) }
     var showPad by remember { mutableStateOf(false) }
-    var seconds by remember { mutableLongStateOf(0L) }
+    var padDigits by remember { mutableStateOf("") }
+    var showReplies by remember { mutableStateOf(false) }
+    var showRoutes by remember { mutableStateOf(false) }
+    var showConference by remember { mutableStateOf(false) }
 
-    LaunchedEffect(call) {
-        val c = call
-        if (c == null) { delay(800); onDone(); return@LaunchedEffect }
-        number = c.details.handle?.schemeSpecificPart.orEmpty()
-    }
-    LaunchedEffect(number) { name = withContext(Dispatchers.IO) { lookupName(ctx, number) } }
-    LaunchedEffect(state, call) {
-        val c = call ?: return@LaunchedEffect
-        while (state == Call.STATE_ACTIVE) {
-            seconds = (System.currentTimeMillis() - c.details.connectTimeMillis) / 1000
-            delay(1000)
+    LaunchedEffect(calls.isEmpty()) {
+        if (calls.isEmpty()) {
+            delay(800)
+            onDone()
         }
     }
 
+    val route = audio?.route ?: CallAudioState.ROUTE_EARPIECE
+    val routes = audio?.supportedRouteMask ?: (CallAudioState.ROUTE_EARPIECE or CallAudioState.ROUTE_SPEAKER)
+    val muted = audio?.isMuted == true
+    val hasBluetooth = routes and CallAudioState.ROUTE_BLUETOOTH != 0
+    LaunchedEffect(state, route) { onProximity(route == CallAudioState.ROUTE_EARPIECE && state in EAR_STATES) }
+
+    val number = primary?.number().orEmpty()
+    val conference = primary?.isConference == true
+    val name = rememberContactName(number)
+    val otherNumber = other?.number().orEmpty()
+    val otherName = rememberContactName(otherNumber)
+    val sim = remember(primary, version) {
+        primary?.details?.accountHandle?.let { h -> if (simAccounts(ctx).size > 1) simLabel(ctx, h) else null }
+    }
+
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    fun elapsed(call: Call): String {
+        val s = ((now - call.details.connectTimeMillis) / 1000).coerceAtLeast(0)
+        return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%02d:%02d".format(s / 60, s % 60)
+    }
+
     val status = when (state) {
-        Call.STATE_RINGING -> "Incoming call"
+        Call.STATE_RINGING -> if (active != null || held != null) "Call waiting" else "Incoming call"
         Call.STATE_DIALING, Call.STATE_CONNECTING, Call.STATE_NEW -> "Calling…"
-        Call.STATE_ACTIVE -> "%02d:%02d".format(seconds / 60, seconds % 60)
+        Call.STATE_ACTIVE -> primary?.let(::elapsed).orEmpty()
         Call.STATE_HOLDING -> "On hold"
         Call.STATE_SELECT_PHONE_ACCOUNT -> "Choose SIM"
+        Call.STATE_DISCONNECTING -> "Ending…"
         else -> "Call ended"
     }
 
@@ -104,25 +175,58 @@ fun InCallScreen(onDone: () -> Unit) {
             Modifier.fillMaxSize().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(64.dp))
-            Avatar(name)
+            if (other != null && state != Call.STATE_RINGING) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .clickable { CallManager.swap() }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(otherName ?: otherNumber.ifEmpty { "Other call" }, fontSize = 15.sp, maxLines = 1)
+                        Text(if (other.state == Call.STATE_HOLDING) "On hold" else "Active", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                    }
+                    if (other.state == Call.STATE_HOLDING) Text("Swap", color = CallGreen, fontSize = 15.sp)
+                }
+            }
+            Spacer(Modifier.height(if (other != null) 24.dp else 56.dp))
+            Avatar(if (conference) "Conference" else name ?: number, size = 96.dp)
             Spacer(Modifier.height(16.dp))
             Text(
-                name ?: number.ifEmpty { "Unknown" },
-                fontSize = 32.sp, textAlign = TextAlign.Center, maxLines = 2
+                when {
+                    conference -> "Conference call"
+                    else -> name ?: number.ifEmpty { "Unknown number" }
+                },
+                fontSize = 30.sp, textAlign = TextAlign.Center, maxLines = 2
             )
-            if (name != null) Text(number, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+            if (name != null && !conference) Text(number, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
             Spacer(Modifier.height(8.dp))
-            Text(status, fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+            Text(listOfNotNull(status, sim).joinToString(" · "), fontSize = 16.sp, color = Color.White.copy(alpha = 0.7f))
+            if (conference && primary != null) {
+                TextButton(onClick = { showConference = true }) {
+                    Text("Manage conference (${primary.children.size})", color = CallGreen)
+                }
+            }
             Spacer(Modifier.weight(1f))
 
             when (state) {
-                Call.STATE_RINGING -> Row(
-                    Modifier.fillMaxWidth().padding(bottom = 48.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 72.dp) { CallManager.hangUp() }
-                    RoundButton(Icons.Filled.Call, "Answer", CallGreen, Color.White, 72.dp) { CallManager.answer() }
+                Call.STATE_RINGING -> if (active != null || held != null) {
+                    // Call waiting, as on MIUI/OxygenOS: three ways to take the new call.
+                    Row(Modifier.fillMaxWidth().padding(bottom = 40.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 68.dp) { CallManager.decline() }
+                        RoundButton(Icons.Filled.Call, "Hold & answer", CallGreen, Color.White, 68.dp) { CallManager.answer() }
+                        RoundButton(Icons.Filled.PhoneInTalk, "End & answer", CallGreen, Color.White, 68.dp) { CallManager.endActiveAndAnswer() }
+                    }
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 40.dp)) {
+                        RoundButton(Icons.Filled.Sms, "Message", Color.White.copy(alpha = 0.12f), Color.White, 52.dp) { showReplies = true }
+                        Spacer(Modifier.height(28.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            RoundButton(Icons.Filled.CallEnd, "Decline", CallRed, Color.White, 72.dp) { CallManager.decline() }
+                            RoundButton(Icons.Filled.Call, "Answer", CallGreen, Color.White, 72.dp) { CallManager.answer() }
+                        }
+                    }
                 }
 
                 Call.STATE_SELECT_PHONE_ACCOUNT -> Column(
@@ -141,22 +245,39 @@ fun InCallScreen(onDone: () -> Unit) {
 
                 else -> {
                     if (showPad) {
-                        Dialpad(onKey = { CallManager.dtmf(it) })
+                        Text(padDigits, fontSize = 28.sp, maxLines = 1)
+                        Dialpad(onKey = { padDigits += it; CallManager.dtmf(it) }, tones = false)
                     } else {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             Toggle(if (muted) Icons.Filled.MicOff else Icons.Filled.Mic, "Mute", muted) {
-                                muted = !muted; CallManager.setMute(muted)
+                                CallManager.setMute(!muted)
                             }
                             Toggle(Icons.Filled.Dialpad, "Keypad", false) { showPad = true }
-                            Toggle(Icons.AutoMirrored.Filled.VolumeUp, "Speaker", speaker) {
-                                speaker = !speaker; CallManager.setSpeaker(speaker)
+                            if (hasBluetooth) {
+                                Toggle(routeIcon(route), routeLabel(route), route != CallAudioState.ROUTE_EARPIECE) { showRoutes = true }
+                            } else {
+                                val speaker = route == CallAudioState.ROUTE_SPEAKER
+                                Toggle(Icons.AutoMirrored.Filled.VolumeUp, "Speaker", speaker) {
+                                    CallManager.setRoute(if (speaker) CallAudioState.ROUTE_WIRED_OR_EARPIECE else CallAudioState.ROUTE_SPEAKER)
+                                }
                             }
-                            Toggle(Icons.Filled.Pause, "Hold", held) {
-                                held = !held; CallManager.setHold(held)
+                        }
+                        Spacer(Modifier.height(20.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            val onHold = primary?.state == Call.STATE_HOLDING
+                            Toggle(if (onHold) Icons.Filled.PlayArrow else Icons.Filled.Pause, if (onHold) "Resume" else "Hold", onHold,
+                                enabled = active != null || held != null) { CallManager.toggleHold(primary) }
+                            Toggle(Icons.Filled.Add, "Add call", false) {
+                                ctx.startActivity(Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                            if (!canMerge && active != null && held != null) {
+                                Toggle(Icons.Filled.SwapVert, "Swap", false) { CallManager.swap() }
+                            } else {
+                                Toggle(Icons.Filled.Group, "Merge", false, enabled = canMerge) { CallManager.merge() }
                             }
                         }
                     }
-                    Spacer(Modifier.height(40.dp))
+                    Spacer(Modifier.height(36.dp))
                     Row(
                         Modifier.fillMaxWidth().padding(bottom = 32.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -171,13 +292,138 @@ fun InCallScreen(onDone: () -> Unit) {
             }
         }
     }
+
+    if (showReplies) {
+        QuickReplyDialog(
+            onDismiss = { showReplies = false },
+            onSend = { text ->
+                showReplies = false
+                CallManager.decline(message = text)
+            }
+        )
+    }
+    if (showRoutes) {
+        AlertDialog(
+            onDismissRequest = { showRoutes = false },
+            confirmButton = {},
+            title = { Text("Audio") },
+            text = {
+                Column {
+                    listOf(
+                        CallAudioState.ROUTE_BLUETOOTH, CallAudioState.ROUTE_SPEAKER,
+                        CallAudioState.ROUTE_WIRED_HEADSET, CallAudioState.ROUTE_EARPIECE
+                    ).filter { routes and it != 0 }.forEach { r ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .clickable { CallManager.setRoute(r); showRoutes = false }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(routeIcon(r), contentDescription = null)
+                            Spacer(Modifier.width(16.dp))
+                            Text(routeLabel(r), fontSize = 17.sp, modifier = Modifier.weight(1f))
+                            if (r == route) Text("✓", color = CallGreen, fontSize = 18.sp)
+                        }
+                    }
+                }
+            }
+        )
+    }
+    if (showConference && primary != null) {
+        ConferenceDialog(primary, onDismiss = { showConference = false })
+    }
 }
 
 @Composable
-private fun Toggle(icon: ImageVector, label: String, on: Boolean, onClick: () -> Unit) =
+private fun rememberContactName(number: String): String? {
+    val ctx = LocalContext.current
+    val name by produceState<String?>(null, number) {
+        value = if (number.isBlank()) null else withContext(Dispatchers.IO) { lookupName(ctx, number) }
+    }
+    return name
+}
+
+private fun routeIcon(route: Int): ImageVector = when (route) {
+    CallAudioState.ROUTE_BLUETOOTH -> Icons.Filled.Bluetooth
+    CallAudioState.ROUTE_SPEAKER -> Icons.AutoMirrored.Filled.VolumeUp
+    CallAudioState.ROUTE_WIRED_HEADSET -> Icons.Filled.Headset
+    else -> Icons.Filled.PhoneInTalk
+}
+
+private fun routeLabel(route: Int): String = when (route) {
+    CallAudioState.ROUTE_BLUETOOTH -> "Bluetooth"
+    CallAudioState.ROUTE_SPEAKER -> "Speaker"
+    CallAudioState.ROUTE_WIRED_HEADSET -> "Headset"
+    else -> "Phone"
+}
+
+@Composable
+fun QuickReplyDialog(onDismiss: () -> Unit, onSend: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val replies = remember { quickReplies(ctx) }
+    var custom by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Decline with message") },
+        text = {
+            Column {
+                replies.forEach { reply ->
+                    Text(
+                        reply, fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable { onSend(reply) }.padding(vertical = 12.dp, horizontal = 8.dp)
+                    )
+                }
+                OutlinedTextField(
+                    value = custom, onValueChange = { custom = it },
+                    placeholder = { Text("Write your own…") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSend(custom.trim()) }, enabled = custom.isNotBlank()) { Text("Send") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun ConferenceDialog(conference: Call, onDismiss: () -> Unit) {
+    val version by CallManager.version.collectAsState()
+    val people = remember(version) { conference.children.toList() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        title = { Text("Conference") },
+        text = {
+            Column {
+                if (people.isEmpty()) Text("Nobody left in the conference")
+                people.forEach { person ->
+                    val number = person.number()
+                    val name = rememberContactName(number)
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name ?: number, modifier = Modifier.weight(1f), maxLines = 1)
+                        // Private = split them off into a one-to-one call.
+                        if (person.details.can(Call.Details.CAPABILITY_SEPARATE_FROM_CONFERENCE)) {
+                            TextButton(onClick = { person.splitFromConference() }) { Text("Private") }
+                        }
+                        if (person.details.can(Call.Details.CAPABILITY_DISCONNECT_FROM_CONFERENCE)) {
+                            TextButton(onClick = { person.disconnect() }) { Text("End", color = CallRed) }
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun Toggle(icon: ImageVector, label: String, on: Boolean, enabled: Boolean = true, onClick: () -> Unit) =
     RoundButton(
         icon, label,
         bg = if (on) Color.White else Color.White.copy(alpha = 0.12f),
         fg = if (on) Color.Black else Color.White,
+        enabled = enabled,
         onClick = onClick
     )

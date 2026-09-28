@@ -3,11 +3,16 @@ package com.vrk.dialer
 import android.Manifest.permission.CALL_PHONE
 import android.Manifest.permission.READ_PHONE_STATE
 import android.annotation.SuppressLint
+import android.app.role.RoleManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.net.Uri
 import android.os.Bundle
+import android.provider.BlockedNumberContract
+import android.provider.BlockedNumberContract.BlockedNumbers
 import android.provider.CallLog
+import android.provider.ContactsContract
 import android.provider.ContactsContract.CommonDataKinds.Phone
 import android.provider.ContactsContract.PhoneLookup
 import android.telecom.PhoneAccount
@@ -16,56 +21,111 @@ import android.telecom.TelecomManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 
-data class Contact(val name: String, val number: String)
-data class Recent(val name: String?, val number: String, val type: Int, val date: Long, val count: Int = 1)
+data class Contact(
+    val name: String,
+    val number: String,
+    val photo: String? = null,
+    val starred: Boolean = false
+)
+
+data class Recent(
+    val name: String?,
+    val number: String,
+    val type: Int,
+    val date: Long,
+    val duration: Long = 0,
+    val accountId: String? = null,
+    val photo: String? = null,
+    val ids: List<Long> = emptyList(),
+    val count: Int = 1
+)
 
 fun String.digits() = filter { it.isDigit() }
-private fun String.key() = digits().takeLast(10)
+
+/** Same number whatever the formatting: "+91 98480 22338" and "098480-22338" both match. */
+fun String.numberKey() = digits().takeLast(10)
+
 private fun granted(ctx: Context, p: String) = ContextCompat.checkSelfPermission(ctx, p) == PERMISSION_GRANTED
 private fun telecom(ctx: Context) = ctx.getSystemService(TelecomManager::class.java)
+
+fun isDefaultDialer(ctx: Context): Boolean =
+    ctx.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_DIALER)
 
 // ---------- Contacts & call log ----------
 
 fun loadContacts(ctx: Context): List<Contact> = runCatching {
     val out = mutableListOf<Contact>()
     ctx.contentResolver.query(
-        Phone.CONTENT_URI, arrayOf(Phone.DISPLAY_NAME, Phone.NUMBER),
+        Phone.CONTENT_URI,
+        arrayOf(Phone.DISPLAY_NAME, Phone.NUMBER, Phone.PHOTO_THUMBNAIL_URI, Phone.STARRED),
         null, null, "${Phone.DISPLAY_NAME} COLLATE NOCASE ASC"
     )?.use { c ->
         while (c.moveToNext()) {
             val name = c.getString(0) ?: continue
             val num = c.getString(1) ?: continue
-            out += Contact(name, num)
+            out += Contact(name, num, c.getString(2), c.getInt(3) == 1)
         }
     }
-    out.distinctBy { it.name to it.number.key() }
+    out.distinctBy { it.name to it.number.numberKey() }
 }.getOrDefault(emptyList())
 
-fun loadRecents(ctx: Context): List<Recent> = runCatching {
+/** Newest first, one row per call (not grouped) — details screens filter this by number. */
+fun loadCallLog(ctx: Context): List<Recent> = runCatching {
     val out = mutableListOf<Recent>()
     ctx.contentResolver.query(
         CallLog.Calls.CONTENT_URI,
-        arrayOf(CallLog.Calls.CACHED_NAME, CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE),
+        arrayOf(
+            CallLog.Calls._ID, CallLog.Calls.CACHED_NAME, CallLog.Calls.NUMBER, CallLog.Calls.TYPE,
+            CallLog.Calls.DATE, CallLog.Calls.DURATION, CallLog.Calls.PHONE_ACCOUNT_ID,
+            CallLog.Calls.CACHED_PHOTO_URI
+        ),
         null, null, "${CallLog.Calls.DATE} DESC"
     )?.use { c ->
-        while (c.moveToNext() && out.size < 500) {
-            out += Recent(c.getString(0)?.takeIf { it.isNotBlank() }, c.getString(1) ?: "", c.getInt(2), c.getLong(3))
+        while (c.moveToNext() && out.size < 1000) {
+            out += Recent(
+                name = c.getString(1)?.takeIf { it.isNotBlank() },
+                number = c.getString(2) ?: "",
+                type = c.getInt(3),
+                date = c.getLong(4),
+                duration = c.getLong(5),
+                accountId = c.getString(6),
+                photo = c.getString(7),
+                ids = listOf(c.getLong(0))
+            )
         }
     }
-    out.grouped()
+    out
 }.getOrDefault(emptyList())
 
 /** MIUI style: back-to-back calls with the same number & type collapse into one row "(3)". */
-private fun List<Recent>.grouped(): List<Recent> {
+fun List<Recent>.grouped(): List<Recent> {
     val acc = mutableListOf<Recent>()
     for (r in this) {
         val last = acc.lastOrNull()
-        if (last != null && last.number.key() == r.number.key() && last.type == r.type) {
-            acc[acc.lastIndex] = last.copy(count = last.count + 1)
+        if (last != null && last.number.numberKey() == r.number.numberKey() && last.type == r.type) {
+            acc[acc.lastIndex] = last.copy(count = last.count + 1, ids = last.ids + r.ids)
         } else acc += r
     }
     return acc
 }
+
+fun isMissed(type: Int) = type == CallLog.Calls.MISSED_TYPE || type == CallLog.Calls.REJECTED_TYPE
+
+/** Only the default Phone app may delete call history (it holds WRITE_CALL_LOG). */
+fun deleteCalls(ctx: Context, ids: List<Long>): Boolean = runCatching {
+    if (ids.isEmpty()) return true
+    ids.chunked(500).forEach { chunk ->
+        ctx.contentResolver.delete(
+            CallLog.Calls.CONTENT_URI,
+            "${CallLog.Calls._ID} IN (${chunk.joinToString(",") { "?" }})",
+            chunk.map { it.toString() }.toTypedArray()
+        )
+    }
+    true
+}.getOrDefault(false)
+
+fun clearCallLog(ctx: Context): Boolean =
+    runCatching { ctx.contentResolver.delete(CallLog.Calls.CONTENT_URI, null, null); true }.getOrDefault(false)
 
 fun lookupName(ctx: Context, number: String): String? = runCatching {
     if (number.isBlank()) return null
@@ -73,6 +133,41 @@ fun lookupName(ctx: Context, number: String): String? = runCatching {
     ctx.contentResolver.query(uri, arrayOf(PhoneLookup.DISPLAY_NAME), null, null, null)
         ?.use { if (it.moveToFirst()) it.getString(0) else null }
 }.getOrNull()
+
+/** The saved contact for a number, to open it in the Contacts app. Null if it isn't saved. */
+fun contactUriFor(ctx: Context, number: String): Uri? = runCatching {
+    if (number.isBlank()) return null
+    val uri = Uri.withAppendedPath(PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+    ctx.contentResolver.query(uri, arrayOf(PhoneLookup._ID, PhoneLookup.LOOKUP_KEY), null, null, null)?.use {
+        if (it.moveToFirst()) ContactsContract.Contacts.getLookupUri(it.getLong(0), it.getString(1)) else null
+    }
+}.getOrNull()
+
+// ---------- Blocked numbers (the system list; only the default Phone app may edit it) ----------
+
+fun canBlock(ctx: Context): Boolean =
+    runCatching { BlockedNumberContract.canCurrentUserBlockNumbers(ctx) }.getOrDefault(false)
+
+fun isBlocked(ctx: Context, number: String): Boolean =
+    runCatching { BlockedNumberContract.isBlocked(ctx, number) }.getOrDefault(false)
+
+fun blockNumber(ctx: Context, number: String): Boolean = runCatching {
+    ctx.contentResolver.insert(
+        BlockedNumbers.CONTENT_URI,
+        ContentValues().apply { put(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, number) }
+    ) != null
+}.getOrDefault(false)
+
+fun unblockNumber(ctx: Context, number: String): Boolean =
+    runCatching { BlockedNumberContract.unblock(ctx, number) > 0 }.getOrDefault(false)
+
+fun loadBlocked(ctx: Context): List<String> = runCatching {
+    val out = mutableListOf<String>()
+    ctx.contentResolver.query(
+        BlockedNumbers.CONTENT_URI, arrayOf(BlockedNumbers.COLUMN_ORIGINAL_NUMBER), null, null, null
+    )?.use { c -> while (c.moveToNext()) c.getString(0)?.let { out += it } }
+    out
+}.getOrDefault(emptyList())
 
 // ---------- T9 search (type 7-2-6 to find "Ram") ----------
 
@@ -107,9 +202,24 @@ fun defaultSim(ctx: Context): PhoneAccountHandle? =
 fun simLabel(ctx: Context, h: PhoneAccountHandle): String =
     telecom(ctx).getPhoneAccount(h)?.label?.toString() ?: "SIM"
 
+/** Call-log account id → SIM name ("Jio", "Airtel"), only when there's more than one SIM. */
+fun simLabels(ctx: Context): Map<String, String> {
+    val sims = simAccounts(ctx)
+    if (sims.size < 2) return emptyMap()
+    return sims.associate { it.id to simLabel(ctx, it) }
+}
+
 @SuppressLint("MissingPermission")
 fun placeCall(ctx: Context, number: String, sim: PhoneAccountHandle?) {
     if (number.isBlank()) return
+    placeCall(ctx, Uri.fromParts(PhoneAccount.SCHEME_TEL, number, null), sim)
+}
+
+/** Long-press 1, as on every phone. */
+fun callVoicemail(ctx: Context) = placeCall(ctx, Uri.fromParts(PhoneAccount.SCHEME_VOICEMAIL, "", null), null)
+
+@SuppressLint("MissingPermission")
+private fun placeCall(ctx: Context, uri: Uri, sim: PhoneAccountHandle?) {
     if (!granted(ctx, CALL_PHONE)) {
         Toast.makeText(ctx, "Allow Phone permission to make calls", Toast.LENGTH_SHORT).show()
         return
@@ -117,5 +227,42 @@ fun placeCall(ctx: Context, number: String, sim: PhoneAccountHandle?) {
     val extras = Bundle().apply {
         sim?.let { putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it) }
     }
-    telecom(ctx).placeCall(Uri.fromParts("tel", number, null), extras)
+    runCatching { telecom(ctx).placeCall(uri, extras) }
+        .onFailure { Toast.makeText(ctx, "Couldn't place the call", Toast.LENGTH_SHORT).show() }
+}
+
+/** Clears the "missed call" notification once you've looked at Recents. */
+fun markMissedCallsRead(ctx: Context) {
+    runCatching { telecom(ctx).cancelMissedCallsNotification() }
+}
+
+// ---------- Speed dial & quick replies (stored on the phone) ----------
+
+private fun prefs(ctx: Context) = ctx.getSharedPreferences("dialer", Context.MODE_PRIVATE)
+
+data class SpeedDial(val name: String, val number: String)
+
+fun speedDial(ctx: Context, digit: Int): SpeedDial? =
+    prefs(ctx).getString("speed_$digit", null)?.split('\u001F')?.takeIf { it.size == 2 }
+        ?.let { SpeedDial(it[0], it[1]) }
+
+fun setSpeedDial(ctx: Context, digit: Int, entry: SpeedDial?) {
+    prefs(ctx).edit().apply {
+        if (entry == null) remove("speed_$digit") else putString("speed_$digit", "${entry.name}\u001F${entry.number}")
+    }.apply()
+}
+
+val DEFAULT_QUICK_REPLIES = listOf(
+    "Can't talk now. Call me later?",
+    "I'll call you right back.",
+    "I'm in a meeting.",
+    "I'm driving. I'll call you later."
+)
+
+fun quickReplies(ctx: Context): List<String> =
+    prefs(ctx).getString("quick_replies", null)?.split('\n')?.filter { it.isNotBlank() }
+        ?.takeIf { it.isNotEmpty() } ?: DEFAULT_QUICK_REPLIES
+
+fun setQuickReplies(ctx: Context, replies: List<String>) {
+    prefs(ctx).edit().putString("quick_replies", replies.filter { it.isNotBlank() }.joinToString("\n")).apply()
 }

@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Deleting call history; granted to the default Phone app. -->
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
+    <!-- Incoming-call heads-up / full-screen call screen and the ongoing-call notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -43,6 +48,11 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <!-- Decline / Hang up buttons in the call notification -->
+        <receiver
+            android:name=".CallActionReceiver"
+            android:exported="false" />
 
         <!-- Telecom binds to this when we are the default Phone app -->
         <service
