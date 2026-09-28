@@ -16,7 +16,23 @@ android {
         versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
     }
 
+    // One fixed debug key, committed on purpose: without it every CI runner signs with a
+    // fresh random key, and Android refuses to install a new build over the previous one
+    // ("App not installed"). Standard public debug-key setup, for sideloaded test builds
+    // only — a Play release needs its own private key.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
         }
