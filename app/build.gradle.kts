@@ -65,3 +65,16 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 }
+
+// Gradle's default test console output is just "<test> FAILED\n <ExceptionType> at <file>:<line>"
+// — no message, no stack trace. That's what turned each of the last few failures into a
+// download-the-HTML-report exercise. Ask for the full detail up front instead.
+tasks.withType<Test> {
+    testLogging {
+        events("failed")
+        exceptionFormat = "full"
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
+}

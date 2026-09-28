@@ -27,6 +27,16 @@ jobs:
       - name: Validate and build debug APK
         run: gradle assembleDebug lintDebug testDebugUnitTest --stacktrace
 
+      # Full console output (see build.gradle.kts) usually says enough; this is the fallback
+      # when it doesn't — the same HTML a local `gradle test` run would open.
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ github.run_number }}
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+
       - name: Rename APK
         run: cp app/build/outputs/apk/debug/app-debug.apk VRK-Dialer-${{ github.run_number }}.apk
 
