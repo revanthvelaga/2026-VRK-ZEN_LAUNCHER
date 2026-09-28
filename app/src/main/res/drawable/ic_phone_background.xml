@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- The app's own Sapphire blue (Theme.kt's primary/onPrimaryContainer), not the
+         unrelated dark green the icon used to be — the launcher icon should look like it
+         belongs to the app it opens. -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="14" android:startY="8"
+                android:endX="98" android:endY="104"
+                android:startColor="#5B78F5"
+                android:endColor="#2436A0" />
+        </aapt:attr>
+    </path>
+</vector>

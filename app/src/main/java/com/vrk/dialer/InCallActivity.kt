@@ -222,13 +222,12 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                         RoundButton(Icons.Filled.PhoneInTalk, "End & answer", CallGreen, Color.White, 68.dp, elevated = true) { CallManager.endActiveAndAnswer() }
                     }
                 } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 40.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 8.dp)) {
                         RoundButton(Icons.Filled.Sms, "Message", Color.White.copy(alpha = 0.12f), Color.White, 52.dp) { showReplies = true }
-                        Spacer(Modifier.height(28.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            SwipeCallControl(Icons.Filled.CallEnd, "Decline", CallRed, upward = false) { CallManager.decline() }
-                            SwipeCallControl(Icons.Filled.Call, "Answer", CallGreen, upward = true, ringing = true) { CallManager.answer() }
-                        }
+                        Spacer(Modifier.height(20.dp))
+                        // One handle, either direction — the Samsung One UI pattern, not two
+                        // separate swipe zones side by side.
+                        IncomingCallSwipe(onAnswer = { CallManager.answer() }, onDecline = { CallManager.decline() })
                     }
                 }
 

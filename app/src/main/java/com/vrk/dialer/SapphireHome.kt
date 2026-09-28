@@ -65,7 +65,7 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(colors.primaryContainer.copy(alpha = .4f), colors.background, colors.background))).safeDrawingPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("V R K  P H O N E", color = colors.primary, style = MaterialTheme.typography.labelSmall)
+                Text("P H O N E", color = colors.primary, style = MaterialTheme.typography.labelSmall)
                 Text(titles[pager.currentPage], style = MaterialTheme.typography.headlineLarge)
             }
             if (pager.currentPage == 2) IconButton(onClick = { addToContacts(ctx, "") }) { Icon(Icons.Default.PersonAdd, "Create contact") }
@@ -80,8 +80,10 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
         }
         HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.Top) { page ->
             when (page) {
-                0 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Spacer(Modifier.height(16.dp))
+                0 -> Box(Modifier.fillMaxSize()) { Column(
+                    Modifier.align(Alignment.Center).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(number.ifEmpty { "Enter a number" }, fontSize = if (number.length > 14) 24.sp else 32.sp,
                         textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth().animateContentSize())
@@ -100,7 +102,7 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
                             trailingContent = { IconButton(onClick = { onDial(c.number) }) { Icon(Icons.Default.Call, "Call ${c.name}", tint = CallGreen) } },
                             modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { contactDetails(c) })
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(20.dp))
                     Dialpad(onKey = { if (number.length < 100) number += it }, onLongDigit = { key ->
                         if (number.isEmpty()) {
                             if (key == '1') callVoicemail(ctx) else {
@@ -117,7 +119,7 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
                         IconButton(onClick = { number = number.dropLast(1) }, enabled = number.isNotEmpty()) { Icon(Icons.AutoMirrored.Filled.Backspace, "Delete digit") }
                     }
                     if (number.isNotEmpty()) TextButton(onClick = { number = "" }) { Text("Clear number") }
-                }
+                } }
                 else -> Column(Modifier.fillMaxSize()) {
                     if (page != 3) OutlinedTextField(value = search, onValueChange = { search = it }, singleLine = true,
                         placeholder = { Text(if (page == 1) "Search calls" else "Search contacts") },
@@ -183,7 +185,7 @@ fun DialerHome(incoming: String, contacts: List<Contact>, callLog: List<Recent>,
         }
     }
     if (clear) AlertDialog(onDismissRequest = { clear = false }, title = { Text("Clear call history?") }, text = { Text("All recent calls will be deleted from this phone.") },
-        confirmButton = { TextButton(onClick = { clear = false; if (!clearCallLog(ctx)) toast(ctx, "Set VRK Phone as your default phone app"); onChanged() }) { Text("Clear") } },
+        confirmButton = { TextButton(onClick = { clear = false; if (!clearCallLog(ctx)) toast(ctx, "Set Phone as your default phone app"); onChanged() }) { Text("Clear") } },
         dismissButton = { TextButton(onClick = { clear = false }) { Text("Cancel") } })
     speed?.let { digit -> ContactPickerDialog("Speed dial $digit", contacts, { speed = null }) { c -> setSpeedDial(ctx, digit, SpeedDial(c.name, c.number)); speed = null } }
 }
