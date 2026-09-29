@@ -132,7 +132,6 @@ class MainActivity : ComponentActivity() {
 sealed interface Screen {
     data object Home : Screen
     data class Details(val number: String, val name: String?, val photo: String?) : Screen
-    data object Appearance : Screen
     data object Settings : Screen
     data object Blocked : Screen
 }
@@ -185,7 +184,7 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
     }
 
     BackHandler(enabled = screen != Screen.Home) {
-        screen = if (screen == Screen.Blocked || screen == Screen.Appearance) Screen.Settings else Screen.Home
+        screen = if (screen == Screen.Blocked) Screen.Settings else Screen.Home
     }
 
     AnimatedContent(
@@ -225,10 +224,8 @@ fun DialerApp(incoming: String, onSetDefault: () -> Unit) {
             contacts = contacts,
             onSetDefault = onSetDefault,
             onBlocked = { screen = Screen.Blocked },
-            onAppearance = { screen = Screen.Appearance },
             onBack = { screen = Screen.Home }
         )
-        Screen.Appearance -> AppearanceScreen(onBack = { screen = Screen.Settings })
         Screen.Blocked -> BlockedScreen(onBack = { screen = Screen.Settings })
     }
     }

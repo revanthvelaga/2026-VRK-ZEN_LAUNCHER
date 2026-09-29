@@ -105,7 +105,6 @@ private val EAR_STATES = setOf(Call.STATE_ACTIVE, Call.STATE_DIALING, Call.STATE
 @Composable
 fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    val theme = LocalAppearance.current.theme
     val version by CallManager.version.collectAsState()
     val audio by CallManager.audio.collectAsState()
     val calls = remember(version) { CallManager.calls.value }
@@ -140,17 +139,6 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
     val number = primary?.number().orEmpty()
     val conference = primary?.isConference == true
     val name = rememberContactName(number)
-    var photo by remember(number) { mutableStateOf<String?>(null) }
-    LaunchedEffect(number) {
-        photo = withContext(Dispatchers.IO) {
-            runCatching {
-                val uri = android.net.Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(number))
-                ctx.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.PHOTO_URI), null, null, null)?.use {
-                    if (it.moveToFirst()) it.getString(0) else null
-                }
-            }.getOrNull()
-        }
-    }
     val otherNumber = other?.number().orEmpty()
     val otherName = rememberContactName(otherNumber)
     val sim = remember(primary, version) {
@@ -167,21 +155,12 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
         else -> "Call ended"
     }
 
-    key(primary) {
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(when (theme) {
-                PhoneTheme.SAPPHIRE -> listOf(Color(0xFF303B81), Color(0xFF0B102B))
-                PhoneTheme.FLOW -> listOf(Color(0xFF433158), Color(0xFF130D20))
-                PhoneTheme.LUMINOUS -> listOf(Color(0xFF214E3D), Color(0xFF0B1711))
-            }))
+            .background(Brush.verticalGradient(listOf(Color(0xFF303B81), Color(0xFF0B102B))))
             .safeDrawingPadding()
     ) {
-        if (theme == PhoneTheme.FLOW && photo != null && !conference) {
-            ContactPortrait(name, photo, Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .55f), Color.Black.copy(alpha = .4f), Color.Black.copy(alpha = .9f)))))
-        }
         val availableHeight = maxHeight
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = availableHeight).padding(24.dp),
@@ -209,7 +188,7 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
                 if (state == Call.STATE_RINGING) {
                     PulsingRing(CallGreen, Modifier.size(104.dp))
                 }
-                Avatar(if (conference) "Conference" else name ?: number, photo = if (conference) null else photo, size = if (theme == PhoneTheme.SAPPHIRE) 120.dp else 104.dp)
+                Avatar(if (conference) "Conference" else name ?: number, size = 104.dp)
             }
             Spacer(Modifier.height(16.dp))
             Text(
@@ -317,8 +296,6 @@ fun InCallScreen(onDone: () -> Unit, onProximity: (Boolean) -> Unit) {
     }
 
     }
-
-    } // call identity: reset gesture state when Telecom switches calls
 
     if (showReplies) {
         QuickReplyDialog(

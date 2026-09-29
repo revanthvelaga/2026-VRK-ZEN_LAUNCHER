@@ -3,10 +3,6 @@ package com.vrk.dialer
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import android.provider.CalendarContract
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Star
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,11 +48,6 @@ fun DetailsScreen(
     var blocked by remember { mutableStateOf(false) }
     var contactUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
-    val privatePrefs = remember { ctx.getSharedPreferences("contact_extras", android.content.Context.MODE_PRIVATE) }
-    val noteKey = "note_${number.numberKey()}"
-    var note by remember(number) { mutableStateOf(privatePrefs.getString(noteKey, "").orEmpty()) }
-    var editNote by remember { mutableStateOf(false) }
-    var favorite by remember(number) { mutableStateOf(isLocalFavorite(ctx, number)) }
     LaunchedEffect(number) {
         val (b, uri) = withContext(Dispatchers.IO) { isBlocked(ctx, number) to contactUriFor(ctx, number) }
         blocked = b
@@ -71,9 +62,7 @@ fun DetailsScreen(
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(32.dp)).background(MaterialTheme.colorScheme.surface).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (LocalAppearance.current.theme == PhoneTheme.FLOW)
-                        ContactPortrait(name, photo, Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(24.dp)))
-                    else Avatar(name, photo, size = 104.dp)
+                    Avatar(name, photo, size = 104.dp)
                     Spacer(Modifier.height(12.dp))
                     Text(name ?: number, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                     if (name != null) Text(number, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -102,31 +91,6 @@ fun DetailsScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                 }
-            }
-            item {
-                ListItem(headlineContent = { Text(if (favorite) "Remove from VRK favourites" else "Add to VRK favourites") },
-                    leadingContent = { Icon(Icons.Filled.Star, null, tint = MaterialTheme.colorScheme.primary) },
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable {
-                        favorite = !favorite; setLocalFavorite(ctx, number, favorite); onChanged()
-                    })
-            }
-            item {
-                ListItem(headlineContent = { Text("Remind me to call") },
-                    supportingContent = { Text("Choose a time in your calendar") },
-                    leadingContent = { Icon(Icons.Filled.Notifications, null) },
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable {
-                        startSafely(ctx, Intent(Intent.ACTION_INSERT, CalendarContract.Events.CONTENT_URI)
-                            .putExtra(CalendarContract.Events.TITLE, "Call ${name ?: number}")
-                            .putExtra(CalendarContract.Events.DESCRIPTION, "Phone: $number")
-                            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, System.currentTimeMillis() + 3600000)
-                            .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, System.currentTimeMillis() + 3900000))
-                    })
-            }
-            item {
-                ListItem(headlineContent = { Text("Private note") },
-                    supportingContent = { Text(note.ifBlank { "Add a note for your next conversation" }) },
-                    trailingContent = { Icon(Icons.Filled.Edit, null) },
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { editNote = true })
             }
             item {
                 ListItem(
@@ -186,14 +150,6 @@ fun DetailsScreen(
         }
     }
 
-    if (editNote) {
-        var draft by remember { mutableStateOf(note) }
-        AlertDialog(onDismissRequest = { editNote = false }, title = { Text("Private note") },
-            text = { OutlinedTextField(draft, { draft = it.take(2000) }, minLines = 3,
-                supportingText = { Text("Stored on this device") }) },
-            confirmButton = { TextButton(onClick = { note = draft.trim(); privatePrefs.edit().putString(noteKey, note).apply(); editNote = false }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { editNote = false }) { Text("Cancel") } })
-    }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },

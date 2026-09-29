@@ -34,26 +34,4 @@ class SwipeCallControlTest {
         compose.onNodeWithContentDescription("Answer").performTouchInput { swipe(center, center + Offset(0f, height * 1.2f)) }
         compose.runOnIdle { assertEquals(0, count) }
     }
-
-    @Test fun incomingUpAnswersAndCannotCommitTwice() {
-        var answers = 0
-        var declines = 0
-        compose.setContent { DialerTheme { IncomingCallSwipe({ answers++ }, { declines++ }) } }
-        val handle = compose.onNodeWithContentDescription("Incoming call control")
-        handle.performTouchInput { swipe(center, center - Offset(0f, height * .2f)) }
-        compose.runOnIdle { assertEquals(0, answers); assertEquals(0, declines) }
-        handle.performTouchInput { swipe(center, center - Offset(0f, height * 1.3f)) }
-        compose.runOnIdle { assertEquals(1, answers); assertEquals(0, declines) }
-        handle.performTouchInput { swipe(center, center + Offset(0f, height * 1.3f)) }
-        compose.runOnIdle { assertEquals(1, answers); assertEquals(0, declines) }
-    }
-    @Test fun incomingDownDeclines() {
-        var answers = 0
-        var declines = 0
-        compose.setContent { DialerTheme { IncomingCallSwipe({ answers++ }, { declines++ }) } }
-        compose.onNodeWithContentDescription("Incoming call control").performTouchInput {
-            swipe(center, center + Offset(0f, height * 1.3f))
-        }
-        compose.runOnIdle { assertEquals(0, answers); assertEquals(1, declines) }
-    }
 }

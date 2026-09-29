@@ -30,16 +30,107 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
-/** One handle shared by themes. Up answers, down declines. */
+/**
+ * Samsung One UI style incoming-call control: one handle, both directions — drag it up to
+ * answer, down to decline. Cancelling (releasing before the threshold) never calls either.
+ */
 @Composable
-fun IncomingCallSwipe(onAnswer: () -> Unit, onDecline: () -> Unit) =
-    IncomingSwipeControl(onAnswer, onDecline)
+fun IncomingCallSwipe(onAnswer: () -> Unit, onDecline: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    val threshold = with(LocalDensity.current) { 72.dp.toPx() }
+    var drag by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    var armed by remember { mutableIntStateOf(0) } // -1 decline, 0 neither, 1 answer
+    var committed by remember { mutableStateOf(false) }
+    val offset by animateFloatAsState(drag, if (dragging) snap() else spring(dampingRatio = .6f), label = "incoming-drag")
+
+    // The handle breathes gently while it waits, and settles the moment you touch it.
+    val ringing = rememberInfiniteTransition(label = "incoming-pulse")
+    val pulse by ringing.animateFloat(1f, 1.1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "pulse")
+    val wobble by ringing.animateFloat(-6f, 6f, infiniteRepeatable(tween(200), RepeatMode.Reverse), label = "wobble")
+
+    fun commit(answer: Boolean) {
+        if (committed) return
+        committed = true
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        if (answer) onAnswer() else onDecline()
+    }
+
+    val progress = (offset.coerceIn(-threshold * 1.4f, threshold * 1.4f) / threshold).coerceIn(-1f, 1f)
+    val handleColor = when {
+        progress > 0f -> lerp(Color.White, CallGreen, progress)
+        progress < 0f -> lerp(Color.White, CallRed, -progress)
+        else -> Color.White
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 32.dp)) {
+        Text(
+            when (armed) {
+                1 -> "Release to answer"
+                -1 -> "Release to decline"
+                else -> "Swipe up to answer · down to decline"
+            },
+            color = Color.White.copy(alpha = .85f), fontSize = 13.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.width(120.dp).height(288.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Filled.KeyboardArrowUp, "Answer", tint = CallGreen.copy(alpha = if (armed >= 0) 1f else .3f),
+                modifier = Modifier.align(Alignment.TopCenter).size(32.dp)
+            )
+            Icon(
+                Icons.Filled.KeyboardArrowDown, "Decline", tint = CallRed.copy(alpha = if (armed <= 0) 1f else .3f),
+                modifier = Modifier.align(Alignment.BottomCenter).size(32.dp)
+            )
+            Box(
+                Modifier
+                    .offset { IntOffset(0, offset.roundToInt()) }
+                    .scale(if (dragging) 1f else pulse)
+                    .size(80.dp)
+                    .background(handleColor, CircleShape)
+                    .semantics {
+                        customActions = listOf(
+                            CustomAccessibilityAction("Answer") { commit(true); true },
+                            CustomAccessibilityAction("Decline") { commit(false); true }
+                        )
+                    }
+                    .pointerInput(threshold) {
+                        detectVerticalDragGestures(
+                            onDragStart = { dragging = true },
+                            onVerticalDrag = { change, amount ->
+                                change.consume()
+                                drag = (drag + amount).coerceIn(-threshold * 1.4f, threshold * 1.4f)
+                                val next = when {
+                                    drag <= -threshold -> -1
+                                    drag >= threshold -> 1
+                                    else -> 0
+                                }
+                                if (next != 0 && next != armed) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                armed = next
+                            },
+                            onDragEnd = {
+                                if (armed != 0) commit(armed == 1)
+                                dragging = false; drag = 0f; armed = 0
+                            },
+                            onDragCancel = { dragging = false; drag = 0f; armed = 0 }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                val icon: ImageVector = if (progress < 0f) Icons.Filled.CallEnd else Icons.Filled.Call
+                val tint = if (progress == 0f) Color(0xFF2436A0) else Color.White
+                Icon(icon, null, tint = tint, modifier = Modifier.size(30.dp).let { m ->
+                    if (!dragging) m.rotate(wobble) else m
+                })
+            }
+        }
+    }
+}
 
 /** Swipe-down-only, used to end an already-connected call. */
 @Composable
 fun SwipeCallControl(icon: ImageVector, label: String, color: Color, upward: Boolean,
     ringing: Boolean = false, onCommit: () -> Unit) {
-    val appearance = LocalAppearance.current
     val action by rememberUpdatedState(onCommit)
     val haptic = LocalHapticFeedback.current
     val threshold = with(LocalDensity.current) { 64.dp.toPx() }
@@ -49,7 +140,7 @@ fun SwipeCallControl(icon: ImageVector, label: String, color: Color, upward: Boo
     var committed by remember { mutableStateOf(false) }
     val offset by animateFloatAsState(drag, if (dragging) snap() else spring(dampingRatio = .7f), label = "call-drag")
     fun commit() {
-        if (!committed) { committed = true; if (appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress); action() }
+        if (!committed) { committed = true; haptic.performHapticFeedback(HapticFeedbackType.LongPress); action() }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(140.dp)) {
         Text(if (upward) "Swipe up" else "Swipe down", color = Color.White.copy(alpha = .75f), fontSize = 13.sp)
@@ -68,7 +159,7 @@ fun SwipeCallControl(icon: ImageVector, label: String, color: Color, upward: Boo
                             change.consume()
                             drag = if (upward) (drag + amount).coerceIn(-threshold * 1.4f, 0f) else (drag + amount).coerceIn(0f, threshold * 1.4f)
                             val ready = kotlin.math.abs(drag) >= threshold
-                            if (ready && !armed) if (appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (ready && !armed) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             armed = ready
                         },
                         onDragEnd = { if (armed) commit(); dragging = false; drag = 0f; armed = false },
@@ -79,56 +170,5 @@ fun SwipeCallControl(icon: ImageVector, label: String, color: Color, upward: Boo
             }
         }
         Text(if (armed) "Release to ${label.lowercase()}" else label, color = Color.White, fontSize = 14.sp)
-    }
-}
-
-/** A single Flow handset: upward answers, downward declines, only after release. */
-@Composable
-fun IncomingSwipeControl(onAnswer: () -> Unit, onDecline: () -> Unit) {
-    val answer by rememberUpdatedState(onAnswer)
-    val decline by rememberUpdatedState(onDecline)
-    val appearance = LocalAppearance.current
-    val haptic = LocalHapticFeedback.current
-    val threshold = with(LocalDensity.current) { 64.dp.toPx() }
-    var drag by remember { mutableFloatStateOf(0f) }
-    var committed by remember { mutableStateOf(false) }
-    var armed by remember { mutableStateOf(false) }
-    val offset by animateFloatAsState(drag, spring(stiffness = 800f), label = "flow-swipe")
-    fun commit(up: Boolean) {
-        if (!committed) {
-            committed = true
-            if (appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            if (up) answer() else decline()
-        }
-    }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("↑  Swipe up to answer", color = Color.White)
-        Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
-            if (!committed) PulsingRing(CallGreen, Modifier.size(80.dp))
-            Box(Modifier.offset { IntOffset(0, offset.roundToInt()) }.size(80.dp)
-                .background(if (drag > 0) CallRed else CallGreen, CircleShape)
-                .semantics {
-                    contentDescription = "Incoming call control"
-                    role = Role.Button
-                    customActions = listOf(CustomAccessibilityAction("Answer") { commit(true); true },
-                        CustomAccessibilityAction("Decline") { commit(false); true })
-                }
-                .pointerInput(threshold) {
-                    detectVerticalDragGestures(
-                        onVerticalDrag = { change, amount ->
-                            change.consume()
-                            drag = (drag + amount).coerceIn(-threshold * 1.5f, threshold * 1.5f)
-                            val ready = kotlin.math.abs(drag) >= threshold
-                            if (ready && !armed && appearance.haptics) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            armed = ready
-                        },
-                        onDragEnd = { if (armed) commit(drag < 0); drag = 0f; armed = false },
-                        onDragCancel = { drag = 0f; armed = false })
-                }, contentAlignment = Alignment.Center) {
-                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Call, null,
-                    tint = Color.White, modifier = Modifier.size(34.dp))
-            }
-        }
-        Text(if (armed) "Release to ${if (drag < 0) "answer" else "decline"}" else "↓  Swipe down to decline", color = Color.White)
     }
 }
